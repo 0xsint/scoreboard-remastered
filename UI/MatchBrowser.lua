@@ -398,7 +398,7 @@ function MB:Render()
         filterLabel, DB.SORT_LABELS[self:SortKey()], #self.items, #all))
 
     local chipData = {
-        { life.winRate and string.format("%.0f%%", life.winRate) or "-", "Win rate" },
+        { life.winRate and string.format("%d%%", math.floor(life.winRate + 0.5)) or "-", "Win rate" },
         { string.format("%.2f", life.kd), "K/D" },
         { life.streak > 0 and string.format("%s%d", life.streakKind == "won" and "W" or "L", life.streak) or "-", "Streak" },
     }
@@ -547,7 +547,7 @@ function MB:RenderMatch(r)
     local hl = {}
     if r.dps then hl[#hl + 1] = "DPS |cFFFFFF" .. SBR.FormatNumber(r.dps) .. "|r" end
     if r.maxHit then hl[#hl + 1] = string.format("Max hit |cFFFFFF%s|r%s", SBR.FormatNumber(r.maxHit), r.maxHitAbility and (" (" .. r.maxHitAbility .. ")") or "") end
-    if r.critRate then hl[#hl + 1] = string.format("Crit |cFFFFFF%.0f%%|r", r.critRate) end
+    if r.critRate then hl[#hl + 1] = string.format("Crit |cFFFFFF%d%%|r", math.floor(r.critRate + 0.5)) end
     if r.fights then hl[#hl + 1] = string.format("|cFFFFFF%d|r fights", r.fights) end
     if r.recaps and r.recaps > 0 then hl[#hl + 1] = string.format("|cFFFFFF%d|r death recaps", r.recaps) end
     if r.flags and r.flags > 0 then hl[#hl + 1] = string.format("|cFFFFFF%d|r flags", r.flags) end
@@ -569,7 +569,7 @@ function MB:RenderLifetime(a)
         a.kills, a.deaths, a.assists))
     self.teams:SetText("")
 
-    self:SetTile(1, "score", a.winRate and string.format("%.0f%%", a.winRate) or "-", "Win rate", "WIN")
+    self:SetTile(1, "score", a.winRate and string.format("%d%%", math.floor(a.winRate + 0.5)) or "-", "Win rate", "WIN")
     self:SetTile(2, "kills", string.format("%.2f", a.kd), "Kill / death", "K/D")
     self:SetTile(3, "assists", tostring(a.mvps), "Times MVP", "MVP")
     self:SetTile(4, "damage", a.bestDamage and SBR.FormatNumber(a.bestDamage.damage) or "-", "Best damage", "DMG")
