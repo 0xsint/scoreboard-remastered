@@ -15,7 +15,14 @@ local function Options()
     end
     return {
         { type = "button", name = "Open Scoreboard Remastered", func = function() SBR.Window:Show(true) end },
-        { type = "button", name = "Open match database", func = function() SBR.MatchBrowser:Open() end },
+        { type = "button", name = "Open battleground records", func = function() SBR.MatchBrowser:Open() end },
+        { type = "header", name = "Inventory" },
+        { type = "checkbox", name = "Battleground records in the inventory",
+          tooltip = "A button on the PC inventory window, and an entry on the gamepad inventory's button bar. Takes effect after /reloadui.",
+          get = function() return sv.inventoryButton end, set = function(v) sv.inventoryButton = v end },
+        { type = "dropdown", name = "Gamepad inventory button",
+          choices = openKeyChoices, values = openKeyValues,
+          get = function() return sv.inventoryKey end, set = function(v) sv.inventoryKey = v end },
         { type = "header", name = "Display" },
         { type = "checkbox", name = "Open with the native scoreboard (mouse)", pcOnly = true,
           tooltip = "In keyboard mode the panel opens and closes with the battleground scoreboard.",

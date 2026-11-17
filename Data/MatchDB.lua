@@ -21,13 +21,15 @@ local function Num(v) return type(v) == "number" and v or 0 end
 
 function DB:Init(sv)
     sv.db = sv.db or { version = 1, records = {} }
+    sv.db.players = sv.db.players or {}
+    sv.db.applied = sv.db.applied or {}
     self.sv = sv
     self.records = sv.db.records
-    -- matches saved before the database existed
-    if #self.records == 0 then
-        for _, m in ipairs(sv.history or {}) do
-            if m.endedAt then self:Add(m) end
-        end
+    self.players = sv.db.players
+    self.applied = sv.db.applied
+    -- matches saved before the database (or the player index) existed
+    for _, m in ipairs(sv.history or {}) do
+        if m.endedAt and not self.applied[m.id] then self:Add(m) end
     end
 end
 
@@ -99,6 +101,7 @@ end
 
 function DB:Add(match)
     local rec = self:Summarize(match)
+    self:AddPlayers(match, rec)
     for i, r in ipairs(self.records) do
         if r.id == rec.id then
             self.records[i] = rec
@@ -197,4 +200,170 @@ function DB:Aggregate(list)
     end
     a.streak, a.streakKind = streak, kind
     return a
+end
+
+---------------------------------------------------------------------------
+-- Player index: everyone you've shared a battleground with, across matches.
+-- Keyed by @account (character name when the account is hidden). Each match is
+-- applied once (sv.db.applied), so re-finalizing never double counts.
+---------------------------------------------------------------------------
+DB.PLAYER_FILTERS = { "all", "allies", "foes", "nemesis", "you" }
+DB.PLAYER_FILTER_LABELS = { all = "Everyone", allies = "Teammates", foes = "Opponents", nemesis = "Killed you", you = "You" }
+DB.PLAYER_SORTS = { "seen", "recent", "kills", "damage", "healing", "killedYou", "name" }
+DB.PLAYER_SORT_LABELS = {
+    seen = "Most seen", recent = "Last seen", kills = "Kills", damage = "Damage", healing = "Healing",
+    killedYou = "Killed you", name = "Name",
+}
+
+local function PlayerKey(p)
+    if p.displayName and p.displayName ~= "" then return p.displayName end
+    return p.characterName or "?"
+end
+
+local function TopInto(map, list)
+    for _, a in ipairs(list or {}) do
+        if a.name and a.name ~= "" then
+            local x = map[a.name] or { name = a.name, icon = a.icon, damage = 0 }
+            x.damage = x.damage + Num(a.damage)
+            if not x.icon or x.icon == "" then x.icon = a.icon end
+            map[a.name] = x
+        end
+    end
+end
+
+function DB:AddPlayers(match, rec)
+    if not match.id or self.applied[match.id] then return end
+    self.applied[match.id] = true
+    local won = match.result == "won"
+    local lost = match.result == "lost"
+    for _, p in pairs(match.players or {}) do
+        local key = PlayerKey(p)
+        local e = self.players[key]
+        if not e then
+            e = { key = key, account = p.displayName, firstSeen = match.startedAt, matches = 0,
+                  withMatches = 0, withWon = 0, againstMatches = 0, againstWon = 0,
+                  kills = 0, deaths = 0, assists = 0, damage = 0, healing = 0, score = 0, medals = 0, flags = 0,
+                  killedYou = 0, killedByYou = 0, damageToYou = 0, damageFromYou = 0, healedYou = 0, healedByYou = 0,
+                  bestScore = 0, classes = {}, characters = {}, maps = {}, abilities = {} }
+            self.players[key] = e
+        end
+        e.isYou = p.isLocal or e.isYou
+        if p.characterName and p.characterName ~= "" then e.name = p.characterName end
+        e.name = e.name or key
+        e.characters[e.name or "?"] = true
+        e.matches = e.matches + 1
+        e.lastSeen, e.lastMap, e.lastMatchId = match.startedAt, match.name, match.id
+        local sameTeam = p.team == match.localTeam
+        if not p.isLocal then
+            if sameTeam then
+                e.withMatches = e.withMatches + 1
+                if won then e.withWon = e.withWon + 1 end
+            else
+                e.againstMatches = e.againstMatches + 1
+                if won then e.againstWon = e.againstWon + 1 end
+            end
+        end
+        local sc = p.scores or {}
+        e.kills = e.kills + Num(sc.KILL)
+        e.deaths = e.deaths + Num(sc.DEATH)
+        e.assists = e.assists + Num(sc.ASSISTS)
+        e.damage = e.damage + Num(sc.DAMAGE_DONE)
+        e.healing = e.healing + Num(sc.HEALING_DONE)
+        e.score = e.score + Num(sc.SCORE)
+        e.flags = e.flags + Num(sc.FLAG_CAPTURED)
+        e.medals = e.medals + Num(p.medalCount)
+        if Num(sc.SCORE) > e.bestScore then e.bestScore, e.bestScoreMap = Num(sc.SCORE), match.name end
+        if p.className then
+            local c = e.classes[p.className] or { className = p.className, icon = p.classIcon, matches = 0 }
+            c.matches = c.matches + 1
+            c.icon = c.icon or p.classIcon
+            e.classes[p.className] = c
+            e.lastClass, e.lastClassIcon = p.className, p.classIcon
+        end
+        e.maps[match.name or "?"] = (e.maps[match.name or "?"] or 0) + 1
+        local v = p.vs or {}
+        e.killedYou = e.killedYou + Num(v.killedYou)
+        e.killedByYou = e.killedByYou + Num(v.killedByYou)
+        e.damageToYou = e.damageToYou + Num(v.damageToYou)
+        e.damageFromYou = e.damageFromYou + Num(v.damageFromYou)
+        e.healedYou = e.healedYou + Num(v.healedYou)
+        e.healedByYou = e.healedByYou + Num(v.healedByYou)
+        TopInto(e.abilities, p.fight and p.fight.topAbilities)
+        -- keep the ability map small: top 8
+        local list = {}
+        for _, a in pairs(e.abilities) do list[#list + 1] = a end
+        if #list > 8 then
+            table.sort(list, function(a, b) return a.damage > b.damage end)
+            e.abilities = {}
+            for i = 1, 8 do e.abilities[list[i].name] = list[i] end
+        end
+    end
+    -- cap the index, dropping the players seen longest ago
+    local max = SBR.sv.maxPlayers or 2000
+    local count, oldestKey, oldest = 0, nil, nil
+    for k, e in pairs(self.players) do
+        count = count + 1
+        if not e.isYou and (not oldest or Num(e.lastSeen) < oldest) then oldestKey, oldest = k, Num(e.lastSeen) end
+    end
+    if count > max and oldestKey then self.players[oldestKey] = nil end
+end
+
+function DB:GetPlayer(key) return self.players[key] end
+
+local PLAYER_SORT_VALUE = {
+    seen = function(e) return e.matches end,
+    recent = function(e) return Num(e.lastSeen) end,
+    kills = function(e) return e.kills end,
+    damage = function(e) return e.damage end,
+    healing = function(e) return e.healing end,
+    killedYou = function(e) return e.killedYou end,
+}
+
+function DB:QueryPlayers(filter, sort)
+    local out = {}
+    for _, e in pairs(self.players) do
+        local keep = true
+        if filter == "allies" then keep = e.withMatches > 0
+        elseif filter == "foes" then keep = e.againstMatches > 0
+        elseif filter == "nemesis" then keep = e.killedYou > 0
+        elseif filter == "you" then keep = e.isYou == true end
+        if keep then out[#out + 1] = e end
+    end
+    if sort == "name" then
+        table.sort(out, function(a, b) return (a.name or a.key):lower() < (b.name or b.key):lower() end)
+    else
+        local value = PLAYER_SORT_VALUE[sort] or PLAYER_SORT_VALUE.seen
+        table.sort(out, function(a, b)
+            local va, vb = value(a), value(b)
+            if va ~= vb then return va > vb end
+            return Num(a.lastSeen) > Num(b.lastSeen)
+        end)
+    end
+    return out
+end
+
+-- Derived numbers for the player card.
+function DB:PlayerSummary(e)
+    local n = math.max(1, e.matches)
+    local abilities = {}
+    for _, a in pairs(e.abilities) do abilities[#abilities + 1] = a end
+    table.sort(abilities, function(a, b) return a.damage > b.damage end)
+    local classes = {}
+    for _, c in pairs(e.classes) do classes[#classes + 1] = c end
+    table.sort(classes, function(a, b) return a.matches > b.matches end)
+    local maps = {}
+    for m, c in pairs(e.maps) do maps[#maps + 1] = { map = m, count = c } end
+    table.sort(maps, function(a, b) return a.count > b.count end)
+    local characters = {}
+    for c in pairs(e.characters) do characters[#characters + 1] = c end
+    table.sort(characters)
+    return {
+        perMatch = { kills = e.kills / n, deaths = e.deaths / n, assists = e.assists / n,
+                     damage = e.damage / n, healing = e.healing / n, score = e.score / n },
+        kd = e.kills / math.max(1, e.deaths),
+        abilities = abilities, classes = classes, maps = maps, characters = characters,
+        relation = e.isYou and "you"
+            or (e.withMatches > 0 and e.againstMatches > 0 and "both")
+            or (e.withMatches > 0 and "ally") or "foe",
+    }
 end

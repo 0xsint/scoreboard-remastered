@@ -19,6 +19,7 @@ UI/Export.lua
 UI/ScoreboardHook.lua
 UI/Gamepad.lua
 UI/MatchBrowser.lua
+UI/InventoryHook.lua
 UI/Settings.lua
 Core.lua
 Bindings.xml

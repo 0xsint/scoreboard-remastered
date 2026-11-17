@@ -1,4 +1,8 @@
--- Match database browser (gamepad screen).
+-- Battleground records: match database + player index (gamepad and mouse).
+--
+-- Two tabs (LB / RB, or click): Matches and Players. Usable anywhere, not only
+-- in battlegrounds: it opens from the inventory (UI/InventoryHook.lua), from the
+-- Scoreboard Remastered screen (R3), from settings, or with /sbr db.
 --
 -- ESO's standard gamepad layout: a list of matches on the left, a detail card on
 -- the right. The card shows the selected match (result banner, team scores, stat
@@ -11,11 +15,16 @@
 --   Y / Triangle         match card / lifetime    LB / RB        page up / down
 --   B / Circle           back
 local SBR = ScoreboardRemastered
-local MB = { sceneName = "scoreboardRemasteredHistory", filter = 1, sort = 1, selected = 1, offset = 0, card = "match" }
+local MB = {
+    sceneName = "scoreboardRemasteredHistory", keyboardSceneName = "scoreboardRemasteredHistoryKeyboard",
+    tab = "matches", filter = 1, sort = 1, selected = 1, offset = 0, card = "match",
+    tabState = { matches = { filter = 1, sort = 1, selected = 1, offset = 0 }, players = { filter = 1, sort = 1, selected = 1, offset = 0 } },
+}
 SBR.MatchBrowser = MB
 
 local WM = WINDOW_MANAGER
 local VISIBLE_ROWS = 8
+local ROWS_TOP = 200
 local ROW_H = 86
 local LIST_W = 760
 local CARD_W = 980
@@ -156,18 +165,41 @@ end
 function MB:CreateList(tlw)
     local list = WM:CreateControl(Name("List"), tlw, CT_CONTROL)
     list:SetAnchor(TOPLEFT, tlw, TOPLEFT, 70, 60)
-    list:SetDimensions(LIST_W, 160 + VISIBLE_ROWS * ROW_H + 70)
+    list:SetDimensions(LIST_W, ROWS_TOP + VISIBLE_ROWS * ROW_H + 70)
+    list:SetMouseEnabled(true)
+    list:SetHandler("OnMouseWheel", function(_, delta) MB:Move(delta > 0 and -1 or 1) end)
     Backdrop(list)
     self.list = list
 
     self.listTitle = Upper(Label(list, F.title, WHITE))
     self.listTitle:SetAnchor(TOPLEFT, list, TOPLEFT, 28, 22)
     self.listTitle:SetDimensions(LIST_W - 56, 40)
-    self.listTitle:SetText("Match database")
+    self.listTitle:SetText("Battleground records")
+
+    -- tabs
+    self.tabs = {}
+    for i, def in ipairs({ { "matches", "Matches" }, { "players", "Players" } }) do
+        local tab = Upper(Label(list, F.big, WHITE))
+        tab:SetDimensions(150, 34)
+        tab:SetAnchor(TOPLEFT, self.listTitle, BOTTOMLEFT, (i - 1) * 160, 4)
+        tab:SetText(def[2])
+        tab:SetMouseEnabled(true)
+        tab:SetHandler("OnMouseUp", function(_, button, upInside) if upInside then MB:SetTab(def[1]) end end)
+        tab.underline = Tex(list, 1, 1, 1, 1)
+        tab.underline:SetDimensions(110, 3)
+        tab.underline:SetAnchor(TOPLEFT, tab, BOTTOMLEFT, 0, 0)
+        tab.key = def[1]
+        self.tabs[i] = tab
+    end
 
     self.listSub = Label(list, F.small, NORMAL)
-    self.listSub:SetAnchor(TOPLEFT, self.listTitle, BOTTOMLEFT, 0, 2)
+    self.listSub:SetAnchor(TOPLEFT, self.listTitle, BOTTOMLEFT, 0, 46)
     self.listSub:SetDimensions(LIST_W - 56, 28)
+    -- mouse: left click = next filter, right click = previous filter
+    self.listSub:SetMouseEnabled(true)
+    self.listSub:SetHandler("OnMouseUp", function(_, button, upInside)
+        if upInside then MB:CycleFilter(button == MOUSE_BUTTON_INDEX_RIGHT and -1 or 1) end
+    end)
 
     -- lifetime chips
     self.chips = {}
@@ -186,7 +218,7 @@ function MB:CreateList(tlw)
         self.chips[i] = chip
     end
 
-    local top = 160
+    local top = ROWS_TOP
     self.rowsTop = top
     self.rows = {}
     for i = 1, VISIBLE_ROWS do
@@ -215,6 +247,11 @@ function MB:CreateList(tlw)
         row.result = Upper(Label(row, F.tiny, WHITE, TEXT_ALIGN_RIGHT))
         row.result:SetAnchor(TOPRIGHT, row.kda, BOTTOMRIGHT, 0, 0)
         row.result:SetDimensions(220, 26)
+        row:SetMouseEnabled(true)
+        row:SetHandler("OnMouseUp", function(_, button, upInside)
+            if upInside and button == MOUSE_BUTTON_INDEX_LEFT then MB:SelectVisible(i) end
+        end)
+        row:SetHandler("OnMouseDoubleClick", function() if MB.tab == "matches" then MB:OpenSelected() end end)
         self.rows[i] = row
     end
 
@@ -357,14 +394,43 @@ end
 ---------------------------------------------------------------------------
 -- data
 ---------------------------------------------------------------------------
-function MB:FilterKey() return SBR.MatchDB.FILTERS[self.filter] end
-function MB:SortKey() return SBR.MatchDB.SORTS[self.sort] end
+function MB:Filters() return self.tab == "players" and SBR.MatchDB.PLAYER_FILTERS or SBR.MatchDB.FILTERS end
+function MB:Sorts() return self.tab == "players" and SBR.MatchDB.PLAYER_SORTS or SBR.MatchDB.SORTS end
+function MB:FilterKey() return self:Filters()[self.filter] end
+function MB:SortKey() return self:Sorts()[self.sort] end
+
+function MB:Query()
+    local DB = SBR.MatchDB
+    if self.tab == "players" then return DB:QueryPlayers(self:FilterKey(), self:SortKey()) end
+    return DB:Query(self:FilterKey(), self:SortKey(), self.ref)
+end
+
+function MB:SetTab(tab)
+    if tab == self.tab then return end
+    self.tabState[self.tab] = { filter = self.filter, sort = self.sort, selected = self.selected, offset = self.offset }
+    self.tab = tab
+    local st = self.tabState[tab]
+    self.filter, self.sort, self.selected, self.offset = st.filter, st.sort, st.selected, st.offset
+    self.items = self:Query()
+    self.selected = zo_clamp(self.selected, 1, math.max(1, #self.items))
+    self:ClampScroll()
+    if SOUNDS and SOUNDS.GAMEPAD_MENU_FORWARD then PlaySound(SOUNDS.GAMEPAD_MENU_FORWARD) end
+    self:Render()
+end
+
+function MB:SelectVisible(i)
+    if self.items[self.offset + i] then
+        self.selected = self.offset + i
+        self:Render()
+    end
+end
 
 function MB:Reload()
     local DB = SBR.MatchDB
-    local ref = self.items and self.items[self.selected] or DB:Query("all", "newest")[1]
-    self.ref = ref
-    self.items = DB:Query(self:FilterKey(), self:SortKey(), ref)
+    if self.tab == "matches" then
+        self.ref = self.items and self.items[self.selected] or DB:Query("all", "newest")[1]
+    end
+    self.items = self:Query()
     self.selected = zo_clamp(self.selected, 1, math.max(1, #self.items))
     self:ClampScroll()
 end
@@ -386,8 +452,24 @@ end
 ---------------------------------------------------------------------------
 -- render
 ---------------------------------------------------------------------------
+function MB:RenderTabs()
+    for _, tab in ipairs(self.tabs) do
+        local on = tab.key == self.tab
+        Paint(tab, on and WHITE or DIM)
+        tab.underline:SetHidden(not on)
+        Paint(tab.underline, GOLD)
+    end
+end
+
 function MB:Render()
     local DB = SBR.MatchDB
+    self:RenderTabs()
+    if self.tab == "players" then
+        self:RenderPlayers()
+        if self.keybinds then KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybinds) end
+        return
+    end
+    for i = 1, 6 do self.medals[i].icon:SetDimensions(56, 56) end
     local all = DB:GetRecords()
     local life = DB:Aggregate(all)
 
@@ -608,6 +690,145 @@ function MB:RenderLifetime(a)
     self.footer:SetText(string.format("Database: %d match records (keeps up to %d).", #SBR.MatchDB:GetRecords(), SBR.sv.maxRecords or 500))
 end
 
+
+---------------------------------------------------------------------------
+-- Players tab
+---------------------------------------------------------------------------
+local RELATION = {
+    you = { text = "You", rgb = { 0.55, 0.78, 0.93 } },
+    ally = { text = "Teammate", rgb = { 0.48, 0.70, 0.88 } },
+    foe = { text = "Opponent", rgb = { 0.92, 0.38, 0.35 } },
+    both = { text = "Both sides", rgb = { 0.90, 0.78, 0.45 } },
+}
+
+local function Avg(v) return v >= 10 and tostring(math.floor(v + 0.5)) or string.format("%.1f", v) end
+
+function MB:RenderPlayers()
+    local DB = SBR.MatchDB
+    local all = DB:QueryPlayers("all", "seen")
+    local allies, foes = 0, 0
+    for _, e in ipairs(all) do
+        if e.withMatches > 0 then allies = allies + 1 end
+        if e.againstMatches > 0 then foes = foes + 1 end
+    end
+    self.listSub:SetText(string.format("%s  |c999999•|r  Sorted by %s  |c999999•|r  %d of %d",
+        DB.PLAYER_FILTER_LABELS[self:FilterKey()], DB.PLAYER_SORT_LABELS[self:SortKey()], #self.items, #all))
+    local chipData = { { tostring(#all), "Players met" }, { tostring(allies), "Teammates" }, { tostring(foes), "Opponents" } }
+    for i, chip in ipairs(self.chips) do
+        chip.value:SetText(chipData[i][1])
+        chip.label:SetText(chipData[i][2])
+    end
+
+    for i, row in ipairs(self.rows) do
+        local e = self.items[self.offset + i]
+        row:SetHidden(e == nil)
+        if e then
+            local selected = (self.offset + i) == self.selected
+            local sum = DB:PlayerSummary(e)
+            local rel = RELATION[sum.relation]
+            Paint(row.bar, rel.rgb)
+            row.bg:SetColor(1, 1, 1, selected and 0.10 or ((i % 2 == 0) and 0.03 or 0))
+            row.glow:SetHidden(not selected)
+            if e.lastClassIcon then row.class:SetTexture(e.lastClassIcon) end
+            row.class:SetHidden(e.lastClassIcon == nil)
+            row.class:SetAlpha(selected and 1 or 0.7)
+            row.map:SetText(e.name or e.key)
+            Paint(row.map, selected and WHITE or { 0.85, 0.85, 0.85 })
+            row.meta:SetText(string.format("%s  •  seen %d×  •  %s", e.account or "", e.matches, ShortDate(e.lastSeen)))
+            if e.isYou then
+                row.kda:SetText(string.format("%d / %d / %d", e.kills, e.deaths, e.assists))
+            else
+                row.kda:SetText(string.format("With %d  •  Vs %d", e.withMatches, e.againstMatches))
+            end
+            Paint(row.kda, selected and WHITE or { 0.80, 0.80, 0.80 })
+            local tail = e.killedYou > 0 and string.format("  •  killed you %d", e.killedYou) or ""
+            row.result:SetText(rel.text .. tail)
+            Paint(row.result, rel.rgb)
+        end
+    end
+    self.moreAbove:SetText(self.offset > 0 and string.format("%d more above", self.offset) or "")
+    local below = #self.items - self.offset - VISIBLE_ROWS
+    self.moreBelow:SetText(below > 0 and string.format("%d more below", below) or "")
+    self.empty:SetHidden(#self.items > 0)
+    self.empty:SetText(#all == 0 and "No players yet.\nEveryone you meet in a battleground shows up here."
+        or "No players match this filter.\nPress Left or Right to change it.")
+    self:RenderPlayer(self.items[self.selected])
+end
+
+function MB:RenderPlayer(e)
+    if not e then
+        self:RenderMatch(nil)
+        return
+    end
+    local DB = SBR.MatchDB
+    local sum = DB:PlayerSummary(e)
+    local rel = RELATION[sum.relation]
+    Paint(self.banner, rel.rgb, 0.85)
+    self.result:SetText(rel.text)
+    Paint(self.result, rel.rgb)
+    self.title:SetText(string.format("%s %s", Icon(e.lastClassIcon, 34), e.name or e.key))
+    self.meta:SetText(string.format("%s  •  %d matches  •  last seen %s, %s  •  first seen %s",
+        e.account or "", e.matches, e.lastMap or "?", ShortDate(e.lastSeen), ShortDate(e.firstSeen)))
+    if e.isYou then
+        self.teams:SetText("")
+    else
+        -- your win-loss record with them on your team, and against them
+        local parts = {}
+        if e.withMatches > 0 then parts[#parts + 1] = string.format("|c7BB3E0With them|r %d-%d", e.withWon, e.withMatches - e.withWon) end
+        if e.againstMatches > 0 then parts[#parts + 1] = string.format("|cEB6159Against them|r %d-%d", e.againstWon, e.againstMatches - e.againstWon) end
+        self.teams:SetText(table.concat(parts, "   "))
+    end
+
+    local pm = sum.perMatch
+    self:SetTile(1, "kills", tostring(e.kills), "Kills  •  " .. Avg(pm.kills) .. " a match", "K")
+    self:SetTile(2, "deaths", tostring(e.deaths), "Deaths  •  " .. Avg(pm.deaths) .. " a match", "D")
+    self:SetTile(3, "assists", tostring(e.assists), "Assists  •  " .. Avg(pm.assists) .. " a match", "A")
+    self:SetTile(4, "damage", SBR.FormatNumber(e.damage), "Damage  •  " .. SBR.FormatNumber(pm.damage) .. " a match", "DMG")
+    self:SetTile(5, "healing", SBR.FormatNumber(e.healing), "Healing  •  " .. SBR.FormatNumber(pm.healing) .. " a match", "HEAL")
+    self:SetTile(6, "score", SBR.FormatNumber(e.score), "Score  •  K/D " .. string.format("%.2f", sum.kd), "PTS")
+
+    if e.isYou then
+        self.rank:SetText(string.format("Your profile across %d characters  •  best score |cFFFFFF%s|r on %s",
+            #sum.characters, SBR.FormatNumber(e.bestScore), e.bestScoreMap or "?"))
+    else
+        local vs = {}
+        vs[#vs + 1] = string.format("Killed you |cFFFFFF%d|r", e.killedYou)
+        vs[#vs + 1] = string.format("You killed them |cFFFFFF%d|r", e.killedByYou)
+        if e.damageToYou > 0 or e.damageFromYou > 0 then
+            vs[#vs + 1] = string.format("Damage to you |cFFFFFF%s|r, from you |cFFFFFF%s|r",
+                SBR.FormatNumber(e.damageToYou), SBR.FormatNumber(e.damageFromYou))
+        end
+        if e.healedYou > 0 then vs[#vs + 1] = string.format("Healed you |cFFFFFF%s|r", SBR.FormatNumber(e.healedYou)) end
+        if e.healedByYou > 0 then vs[#vs + 1] = string.format("You healed them |cFFFFFF%s|r", SBR.FormatNumber(e.healedByYou)) end
+        self.rank:SetText(table.concat(vs, "   |c777777•|r   "))
+    end
+
+    self.sectionA:SetText("Classes played")
+    local classes = {}
+    for _, c in ipairs(sum.classes) do
+        classes[#classes + 1] = { icon = c.icon, count = c.matches, name = c.className }
+    end
+    self:ShowMedals(classes)
+
+    self.sectionB:SetText("Top abilities")
+    local rows, max = {}, 0
+    for _, a in ipairs(sum.abilities) do max = math.max(max, a.damage) end
+    for i, a in ipairs(sum.abilities) do
+        if i > 5 then break end
+        rows[#rows + 1] = { icon = a.icon, name = a.name, value = SBR.FormatNumber(a.damage),
+                            fraction = max > 0 and a.damage / max or 0, rgb = rel.rgb }
+    end
+    self:ShowBars(rows)
+
+    local hl = {}
+    hl[#hl + 1] = string.format("Best score |cFFFFFF%s|r (%s)", SBR.FormatNumber(e.bestScore), e.bestScoreMap or "?")
+    hl[#hl + 1] = string.format("|cFFFFFF%d|r medals", e.medals)
+    if e.flags > 0 then hl[#hl + 1] = string.format("|cFFFFFF%d|r flags", e.flags) end
+    if sum.maps[1] then hl[#hl + 1] = string.format("Most seen on |cFFFFFF%s|r (%d)", sum.maps[1].map, sum.maps[1].count) end
+    self.highlights:SetText(table.concat(hl, "   |c777777•|r   "))
+    self.footer:SetText(string.format("Characters: %s", table.concat(sum.characters, ", ")))
+end
+
 ---------------------------------------------------------------------------
 -- input
 ---------------------------------------------------------------------------
@@ -620,18 +841,16 @@ function MB:Move(delta)
 end
 
 function MB:CycleFilter(delta)
-    local DB = SBR.MatchDB
-    self.ref = self.items[self.selected] or self.ref
-    self.filter = ((self.filter - 1 + delta) % #DB.FILTERS) + 1
-    self.items = DB:Query(self:FilterKey(), self:SortKey(), self.ref)
+    if self.tab == "matches" then self.ref = self.items[self.selected] or self.ref end
+    self.filter = ((self.filter - 1 + delta) % #self:Filters()) + 1
+    self.items = self:Query()
     self.selected, self.offset = 1, 0
     self:Render()
 end
 
 function MB:CycleSort()
-    local DB = SBR.MatchDB
-    self.sort = (self.sort % #DB.SORTS) + 1
-    self.items = DB:Query(self:FilterKey(), self:SortKey(), self.ref)
+    self.sort = (self.sort % #self:Sorts()) + 1
+    self.items = self:Query()
     self.selected, self.offset = 1, 0
     self:Render()
 end
@@ -657,24 +876,30 @@ end
 function MB:BuildKeybinds()
     local DB = SBR.MatchDB
     local function selectedStored()
+        if MB.tab ~= "matches" then return false end
         local r = self.items and self.items[self.selected]
         return r ~= nil and DB:FindMatch(r.id) ~= nil
     end
+    local function sortLabels() return MB.tab == "players" and DB.PLAYER_SORT_LABELS or DB.SORT_LABELS end
     self.keybinds = {
         alignment = KEYBIND_STRIP_ALIGN_LEFT,
         { name = "View scoreboard", keybind = "UI_SHORTCUT_PRIMARY",
           callback = function() MB:OpenSelected() end, visible = selectedStored },
         { name = "Back", keybind = "UI_SHORTCUT_NEGATIVE", callback = function() MB:Close() end },
-        { name = function() return "Sort: " .. DB.SORT_LABELS[MB:SortKey()] end, keybind = "UI_SHORTCUT_SECONDARY",
+        { name = function() return "Sort: " .. sortLabels()[MB:SortKey()] end, keybind = "UI_SHORTCUT_SECONDARY",
           callback = function() MB:CycleSort() end },
         { name = function() return MB.card == "life" and "Match details" or "Lifetime stats" end, keybind = "UI_SHORTCUT_TERTIARY",
           callback = function()
               MB.card = MB.card == "life" and "match" or "life"
               MB:Render()
-          end },
-        { name = "Page up", keybind = "UI_SHORTCUT_LEFT_SHOULDER", callback = function() MB:Move(-VISIBLE_ROWS) end,
+          end, visible = function() return MB.tab == "matches" end },
+        { name = function() return MB.tab == "players" and "Matches" or "Players" end, keybind = "UI_SHORTCUT_LEFT_SHOULDER",
+          callback = function() MB:SetTab(MB.tab == "players" and "matches" or "players") end },
+        { name = function() return MB.tab == "players" and "Matches" or "Players" end, keybind = "UI_SHORTCUT_RIGHT_SHOULDER",
+          callback = function() MB:SetTab(MB.tab == "players" and "matches" or "players") end, ethereal = true },
+        { name = "Page up", keybind = "UI_SHORTCUT_LEFT_TRIGGER", callback = function() MB:Move(-VISIBLE_ROWS) end,
           visible = function() return MB.selected > 1 end },
-        { name = "Page down", keybind = "UI_SHORTCUT_RIGHT_SHOULDER", callback = function() MB:Move(VISIBLE_ROWS) end,
+        { name = "Page down", keybind = "UI_SHORTCUT_RIGHT_TRIGGER", callback = function() MB:Move(VISIBLE_ROWS) end,
           visible = function() return MB.items and MB.selected < #MB.items end },
     }
 end
@@ -698,20 +923,40 @@ function MB:Init()
         elseif newState == SCENE_HIDING then MB:OnHiding() end
     end)
     self.scene = scene
+
+    -- keyboard / mouse version of the same screen (opened from the PC inventory)
+    local kb = ZO_Scene:New(self.keyboardSceneName, SCENE_MANAGER)
+    kb:AddFragment(self.fragment)
+    if KEYBIND_STRIP_FADE_FRAGMENT then kb:AddFragment(KEYBIND_STRIP_FADE_FRAGMENT) end
+    kb:RegisterCallback("StateChange", function(_, newState)
+        if newState == SCENE_SHOWN then MB:OnShown()
+        elseif newState == SCENE_HIDING then MB:OnHiding() end
+    end)
+    self.keyboardScene = kb
     self.vertical = ZO_MovementController:New(MOVEMENT_CONTROLLER_DIRECTION_VERTICAL)
     self.horizontal = ZO_MovementController:New(MOVEMENT_CONTROLLER_DIRECTION_HORIZONTAL)
     self:BuildKeybinds()
 end
 
-function MB:IsShowing() return self.scene ~= nil and self.scene:IsShowing() end
+function MB:IsShowing()
+    return (self.scene ~= nil and self.scene:IsShowing()) or (self.keyboardScene ~= nil and self.keyboardScene:IsShowing())
+end
 
-function MB:Open()
-    if not SBR.IsGamepad() then
-        SBR.Print("The match database is a gamepad screen. Switch to gamepad mode (Settings > Gameplay), or use /sbr history.")
-        return
-    end
+-- tab: optional "matches" or "players"
+function MB:Open(tab)
     self:Init()
-    if self.scene and not self:IsShowing() then SCENE_MANAGER:Push(self.sceneName) end
+    if not self.scene then return end
+    if tab then self:SetTabSilently(tab) end
+    if self:IsShowing() then return end
+    SCENE_MANAGER:Push(SBR.IsGamepad() and self.sceneName or self.keyboardSceneName)
+end
+
+function MB:SetTabSilently(tab)
+    if tab == self.tab then return end
+    self.tabState[self.tab] = { filter = self.filter, sort = self.sort, selected = self.selected, offset = self.offset }
+    self.tab = tab
+    local st = self.tabState[tab]
+    self.filter, self.sort, self.selected, self.offset = st.filter, st.sort, st.selected, st.offset
 end
 
 function MB:Close()
@@ -722,10 +967,18 @@ function MB:OnShown()
     self:Reload()
     self:Render()
     KEYBIND_STRIP:AddKeybindButtonGroup(self.keybinds)
-    DIRECTIONAL_INPUT:Activate(self, self.control)
+    if SBR.IsGamepad() then
+        DIRECTIONAL_INPUT:Activate(self, self.control)
+        self.directional = true
+    elseif SCENE_MANAGER.IsInUIMode and not SCENE_MANAGER:IsInUIMode() then
+        SCENE_MANAGER:SetInUIMode(true) -- mouse cursor for the keyboard version
+    end
 end
 
 function MB:OnHiding()
-    DIRECTIONAL_INPUT:Deactivate(self)
+    if self.directional then
+        DIRECTIONAL_INPUT:Deactivate(self)
+        self.directional = false
+    end
     KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybinds)
 end

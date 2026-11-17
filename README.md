@@ -96,36 +96,54 @@ details pane. Settings has an **Open Scoreboard Remastered** button so you can b
 saved matches outside a battleground, since consoles have no slash commands. On console,
 10 matches are kept by default because console SavedVariables are smaller.
 
-### Match database (gamepad screen)
+### Battleground records: matches and players (open from the inventory)
 
-Every finished match also writes a compact summary record to a match database. It
-keeps 500 records on PC and 150 on console, far longer than full scoreboards. Open it with **R3**
-from the Scoreboard Remastered screen, the settings panel, or `/sbr db` in gamepad mode.
+A records dialog with two tabs, usable anywhere, not just in battlegrounds:
 
-It uses ESO's gamepad layout, with your matches on the left and a detail card on the right:
+- **Inventory:** on PC, a **Battleground records** button sits above the inventory window. On
+  gamepad / console, **Battleground records** is on the inventory's button bar (right stick
+  click by default; you can change it in settings). Both open on the Players tab, and B / Esc
+  returns to the inventory.
+- **Also opens from:** R3 on the Scoreboard Remastered screen, the settings panel,
+  `/sbr db` and `/sbr players`.
+- **Controls:** it works with a controller and with the mouse. Click a tab, row or the
+  filter line, use the mouse wheel to scroll, and double-click a match to open it.
 
-- **Match list:** each row has a result color bar, class icon, map, mode, date, duration,
-  K/D/A, result and damage. Above the list are lifetime chips for win rate, K/D and current streak.
-- **Match card:**
-  - A Victory / Defeat banner with the map, mode, team size, duration, date, and your class and character.
-  - Team scores in team colors.
-  - Six stat tiles (kills, deaths, assists, damage, healing, score), each with an icon.
-  - Your rank on your team and overall, the match MVP and your K/D/A ratio.
-  - Medals with their icons and counts.
-  - Your top three abilities with icons and damage bars.
-  - Fight highlights: DPS, max hit, crit rate, fights and death recaps.
-- **Lifetime card** (Y / Triangle): win rate, K/D, times MVP, best damage, best healing and
-  most kills, plus a record for each class (with icons) and win-rate bars for each map.
+**Matches tab:** every match you've played. Each finished match writes a compact record
+(500 kept on PC, 150 on console), so this outlasts full scoreboards. Rows show the result,
+class icon, map, mode, date, duration, K/D/A and damage. The card shows:
+- the result banner and team scores
+- six stat tiles with icons
+- your rank and the match MVP
+- medals with icons, and top abilities with icons and bars
+- fight highlights
+
+Y / Triangle switches to your lifetime record: win rate, K/D, bests, by class and by map.
+
+**Players tab:** everyone you've shared a battleground with, including your own profile
+across all your characters (2000 players kept on PC, 400 on console). Each player card shows:
+- whether they've been your **teammate**, **opponent** or both, and your win-loss record
+  with them and against them
+- their totals and per-match averages for kills, deaths, assists, damage, healing and
+  score, plus K/D
+- **you vs them:** how often they killed you and you killed them, damage each way and
+  healing each way
+- the classes they've played (with icons) and their top abilities (with icons and bars)
+- best score, medals, flags, the map you meet them on most, and their character names
+
+Filters: everyone, teammates, opponents, players who've killed you, and you.
+Sorts: most seen, last seen, kills, damage, healing, times they killed you, name.
 
 | Xbox | PlayStation | Action |
 |---|---|---|
-| Up / Down | same | select a match |
-| Left / Right | same | filter: all, victories, defeats, this map, this class |
-| A | Cross | open the match's full scoreboard (while it's still stored) |
-| X | Square | sort: newest, score, kills, K/D/A, damage, healing, medals |
-| Y | Triangle | match card / lifetime stats |
-| LB / RB | L1 / R1 | page up / down |
-| B | Circle | back |
+| LB / RB | L1 / R1 | Matches / Players tab |
+| Up / Down | same | select |
+| Left / Right | same | change the filter |
+| A | Cross | open the match's full scoreboard (Matches tab, while stored) |
+| X | Square | change the sort |
+| Y | Triangle | match card / lifetime stats (Matches tab) |
+| LT / RT | L2 / R2 | page up / down |
+| B | Circle | back (to the inventory or the scoreboard) |
 
 ### Slash commands (PC)
 
@@ -135,7 +153,7 @@ It uses ESO's gamepad layout, with your matches on the left and a detail card on
 | `/sbr export` / `/sbr kills` | CSV / kill feed of the viewed match |
 | `/sbr history [n]` | list saved matches / open match *n* |
 | `/sbr live` | back to the live match |
-| `/sbr db` | match database (gamepad mode) |
+| `/sbr db`, `/sbr players` | battleground records (matches / players tab) |
 | `/sbr attach right\|left\|below\|free`, `/sbr reset` | positioning |
 | `/sbr status` | LibFights state and the score types detected |
 | `/sbr hooks` | which native scoreboard scenes/fragments were hooked |
@@ -182,6 +200,8 @@ columns are unaffected.
   keybind strip, directional input and the movement controller. Like the rest of the
   add-on, it hasn't been run on a console yet. If a button doesn't show up, the
   settings panel has the open button and the open-key choice.
+- The inventory hooks use the `inventory` (PC) and `gamepad_inventory_root` (gamepad) scenes.
+  `/sbr hooks` shows whether both were found.
 - The panel uses ESO's own text colours (`ZO_NORMAL_TEXT`, `ZO_SELECTED_TEXT`, `ZO_DISABLED_TEXT`)
   and stock list textures (row highlight, selected highlight, divider, sort arrows from
   `EsoUI/Art/Miscellaneous/`). Each texture sits on top of a plain colour, so if a path

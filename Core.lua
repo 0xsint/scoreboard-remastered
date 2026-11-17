@@ -16,6 +16,9 @@ local DEFAULTS = {
     maxHistory = 50,       -- 10 on console (smaller SavedVariables budget)
     gamepadOpenKey = "right_stick", -- button added to the native gamepad scoreboard
     maxRecords = 500,      -- match database records (150 on console)
+    maxPlayers = 2000,     -- player index entries (400 on console)
+    inventoryButton = true, -- "Battleground records" in the inventory
+    inventoryKey = "right_stick", -- gamepad inventory button
     debug = false,
     history = {},
 }
@@ -32,6 +35,7 @@ end
 local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
         SBR.Hook:Install() -- catch anything created after addon load
+        SBR.InventoryHook:Install()
         SBR.LibFights:Init()
         SBR.MatchLog:OnPlayerActivated()
     end)
@@ -50,7 +54,8 @@ local HELP = {
     "/sbr kills - kill feed of the viewed match",
     "/sbr history [n] - list saved matches, or open match n",
     "/sbr live - back to the live/last match",
-    "/sbr db - match database (gamepad mode)",
+    "/sbr db - battleground records (matches and players)",
+    "/sbr players - battleground records, players tab",
     "/sbr reset - reset panel position",
     "/sbr attach right|left|below|free",
     "/sbr clear - delete saved history",
@@ -115,8 +120,10 @@ local function Slash(args)
         else
             ListHistory()
         end
-    elseif cmd == "db" or cmd == "database" then
+    elseif cmd == "db" or cmd == "database" or cmd == "records" then
         SBR.MatchBrowser:Open()
+    elseif cmd == "players" then
+        SBR.MatchBrowser:Open("players")
     elseif cmd == "live" then
         W:Show(true)
         W:SetView(nil)
@@ -132,6 +139,7 @@ local function Slash(args)
         Status()
     elseif cmd == "hooks" then
         SBR.Hook:Report()
+        SBR.InventoryHook:Report()
     elseif cmd == "debug" then
         SBR.sv.debug = not SBR.sv.debug
         SBR.Print("debug %s", SBR.sv.debug and "on" or "off")
@@ -151,6 +159,7 @@ local function OnAddOnLoaded(_, addonName)
     if SBR.IsConsole() then
         DEFAULTS.maxHistory = 10
         DEFAULTS.maxRecords = 150
+        DEFAULTS.maxPlayers = 400
     end
     SBR.sv = ZO_SavedVars:NewAccountWide("ScoreboardRemasteredSV", 1, nil, DEFAULTS)
     SBR.MatchLog:Init(SBR.sv)
@@ -161,6 +170,7 @@ local function OnAddOnLoaded(_, addonName)
     SBR.Window:Create()
     SBR.Gamepad:Init()
     SBR.MatchBrowser:Init()
+    SBR.InventoryHook:Install()
     SBR.Settings:Create()
     RegisterEvents()
 
