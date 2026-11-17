@@ -55,11 +55,27 @@ function ML:Begin(info)
         columnsSeen = {},
     }
     self.sv.current = match
-    SBR.FightTracker:Start()
-    SBR.Fights:Broadcast("OnMatchStart", info)
-    self:StartPeriodic()
+    self:StartTracking(match)
     SBR.Debug("match begin %s", match.id)
     return match
+end
+
+-- LibFights when available, otherwise the built-in combat-log tracker.
+function ML:StartTracking(match)
+    if not SBR.LibFights:Attach(match) then SBR.FightTracker:Start() end
+    self:StartPeriodic()
+end
+
+-- Kills and deaths between you and each player, from the battleground kill feed.
+local function KillFeedVs(match)
+    local vs = {}
+    local function get(n) vs[n] = vs[n] or { killedByYou = 0, killedYou = 0 } return vs[n] end
+    local me = match.character
+    for _, k in ipairs(match.killFeed or {}) do
+        if k.killer == me and k.victim and k.victim ~= "" then get(k.victim).killedByYou = get(k.victim).killedByYou + 1 end
+        if k.victim == me and k.killer and k.killer ~= "" then get(k.killer).killedYou = get(k.killer).killedYou + 1 end
+    end
+    return vs
 end
 
 function ML:ApplyInfo(match, info)
@@ -94,6 +110,8 @@ function ML:Snapshot()
     local info = BG:ReadMatchInfo()
     self:ApplyInfo(match, info)
 
+    local agg = SBR.LibFights:BuildAggregate(match)
+    local killVs = KillFeedVs(match)
     local present = {}
     for _, e in ipairs(BG:ReadEntries()) do
         local key = BG:EntryKey(e)
@@ -110,10 +128,23 @@ function ML:Snapshot()
         p.left = nil
         for k in pairs(e.scores) do match.columnsSeen[k] = true end
 
-        local fight = SBR.Fights:GetPlayerStats(p.characterName, p.displayName, p.isLocal)
-        if fight then p.fight = Sanitize(fight, 0) end
-        local vs = not p.isLocal and SBR.FightTracker:GetVsStats(p.characterName)
-        if vs then p.vs = vs end
+        local fight = SBR.LibFights:GetPlayerStats(agg, p)
+            or (SBR.FightTracker.active and SBR.FightTracker:GetPlayerStats(p.characterName, p.displayName, p.isLocal))
+        if fight or match.lf then
+            -- With LibFights, a live fight it later discards (shorter than its
+            -- minFightSeconds) must drop out again, so overwrite with nil too.
+            p.fight = fight and Sanitize(fight, 0) or nil
+        end
+        if not p.isLocal then
+            local vs = SBR.LibFights:GetVsStats(agg, p.characterName)
+                or (SBR.FightTracker.active and SBR.FightTracker:GetVsStats(p.characterName)) or nil
+            local kv = killVs[p.characterName]
+            if kv then
+                vs = vs or {}
+                vs.killedByYou, vs.killedYou = kv.killedByYou, kv.killedYou
+            end
+            if vs then p.vs = vs end
+        end
 
         match.players[key] = p
     end
@@ -177,7 +208,11 @@ end
 function ML:Finalize(reason)
     local match = self.sv.current
     if not match then return end
-    if reason ~= "reload" then self:Snapshot() end
+    if reason ~= "reload" then
+        SBR.LibFights:Detach(match) -- closes the running LibFights fight first
+        self:Snapshot()
+    end
+    SBR.LibFights:Compact(match)
     self:StopPeriodic()
     SBR.FightTracker:Stop()
 
@@ -185,9 +220,7 @@ function ML:Finalize(reason)
     match.duration = match.endedAt - (match.runningSince or match.startedAt)
     match.endReason = reason
     match.result = reason == "finished" and DetermineResult(match) or (reason == "left" and "left" or "unknown")
-    match.providerSummaries = Sanitize(SBR.Fights:GetMatchSummaries(), 0)
     match.startedMs = nil
-    SBR.Fights:Broadcast("OnMatchEnd", match)
 
     table.insert(self.sv.history, match)
     local max = self.sv.maxHistory or 50
@@ -233,8 +266,7 @@ function ML:OnPlayerActivated()
     if inBG then
         if current then
             -- /reloadui mid-match: keep the log, restart live tracking.
-            SBR.FightTracker:Start()
-            self:StartPeriodic()
+            self:StartTracking(current)
         else
             self:Begin(BG:ReadMatchInfo())
         end

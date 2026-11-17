@@ -168,6 +168,7 @@ function FT:GetPlayerStats(characterName, displayName, isLocal)
         local me = self.me
         local secs = self:GetCombatSeconds()
         local s = SBR.ShallowCopy(me)
+        s.source = FT.name
         s.topAbilities = TopAbilities(me.topAbilities, 5)
         s.activeTime = secs
         s.dps = secs > 0 and me.damageDone / secs or 0

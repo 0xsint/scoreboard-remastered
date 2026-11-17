@@ -27,12 +27,20 @@ and every 5 seconds:
 - Players who left mid-match are kept and marked *(left)*
 - The result (victory, defeat, tie or left early) and the match duration
 
-Fight data (LibFights first, built-in tracker fills gaps):
+Fight data from [LibFights](https://github.com/0xsint/LibFights), summed across every fight in the match:
 
-- DPS, HPS, damage and healing done and taken, killing blows, deaths, interrupts,
-  CC applied and taken, shields, blocked damage, crit rate, combat time, your top abilities
-- "You vs them" per player: damage you dealt them, damage they dealt you,
-  healing you gave them, and kills each way
+- **You:** damage, healing, DPS/HPS (over active time), damage/healing taken, shields
+  absorbed, mitigation, blocked damage, overheal, killing blows, deaths, interrupts done and
+  received, CC done and received, crit rate, max hit and its ability, light/heavy attacks,
+  skills, ultimates, weaves, top damage and heal abilities with icons, and the number of fights
+- **Teammates** (LibFights group mode): damage, healing, crit rate, shields absorbed
+- **Everyone:** damage you dealt them, damage they dealt you, healing you gave them, and
+  kills each way (from the kill feed)
+- **Your deaths** with LibFights' death recap (the last hits before each death)
+- **A fight list** for the match: title, duration, DPS, damage, healing, KBs and deaths
+
+Without LibFights, a built-in combat-log tracker gives a smaller version of the "you" and
+"everyone" data.
 
 Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 (`history`, 50 by default). A match still in progress (`current`) survives `/reloadui`.
@@ -54,54 +62,41 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 | `/sbr history [n]` | list saved matches / open match *n* |
 | `/sbr live` | back to the live match |
 | `/sbr attach right\|left\|below\|free`, `/sbr reset` | positioning |
-| `/sbr status` | fight providers and score types detected |
+| `/sbr status` | LibFights state and the score types detected |
 | `/sbr hooks` | which native scoreboard scenes/fragments were hooked |
 | `/sbr clear`, `/sbr debug` | clear history, toggle debug output |
 
 ## LibFights integration
 
-Edit `Data/LibFightsAdapter.lua` only.
+Nothing needs configuring. When a battleground starts:
 
-**Option A: auto-detect (no changes to LibFights).** If a global `LibFights` exists
-(or LibStub `"LibFights-1.0"`), the adapter calls the first method it finds out of
-`GetPlayerStats`, `GetStatsForPlayer`, `GetUnitStats`, `GetPlayerFightData` and `GetStats`, as:
+1. If LibFights isn't already logging, Scoreboard Remastered calls
+   `Start_Logging({ groupMode = true, rawEvents = false, saveFights = false })`.
+   If another add-on or you already started logging, it shares that session and
+   never stops it.
+2. Every `FIGHT_ENDED` during the match is stored. Each snapshot also reads
+   `LibFights.GetCurrentFight()`, so the panel stays live mid-fight.
+3. Each player's numbers are built from `f:GetSummary()`, `f:GetTargets()`,
+   `f:GetSources()`, `f.healTargets`, `f:GetGroup()` and
+   `f:GetAbilityBreakdown()`. Your death recaps come from the `DEATH` callback.
+4. When the match ends, it calls `Stop_Logging()`, but only if it started the
+   logging. That closes the running fight, so the last fight is counted too.
+   Per-fight breakdowns are then reduced to a compact fight list, which keeps
+   SavedVariables small.
 
-```lua
-LibFights:GetPlayerStats(characterName, displayName, isLocal) -> table | nil
-```
+Settings: *Use LibFights*, *Group mode* (teammates' damage/healing; costs more
+CPU in 8v8), and *Also save fights in LibFights' SavedVariables* (off by default,
+so battlegrounds don't fill your LibFights saved fights).
 
-It maps the result's fields through the `FIELDS` alias table. For example,
-`damage`, `dmg` and `damageDone` all become `damageDone`. If your names differ,
-add them to `FIELDS` or `METHOD_CANDIDATES`. If the lib has a `Reset` method, it is
-called at match start. If it has `GetMatchSummary` or `GetFightSummary`, the result
-is saved with the match.
-
-**Option B: push from LibFights.**
-
-```lua
-ScoreboardRemastered.RegisterFightProvider({
-    name = "LibFights",
-    GetPlayerStats = function(self, characterName, displayName, isLocal)
-        return { damageDone = ..., healingDone = ..., dps = ..., killingBlows = ... }
-    end,
-    OnMatchStart = function(self, info) end,       -- optional
-    OnMatchEnd = function(self, match) end,        -- optional
-    GetMatchSummary = function(self) return {} end, -- optional, saved with the match
-})
-```
-
-Call this after `ScoreboardRemastered` has loaded, for example in `EVENT_PLAYER_ACTIVATED`.
-Load order puts LibFights first, so a call at LibFights' own load-time is too early.
-
-Canonical stat keys: `damageDone damageTaken healingDone healingTaken dps hps
-killingBlows deaths interrupts ccApplied ccTaken damageShielded damageBlocked
-critRate activeTime fights`.
+LibFights drops fights shorter than its `minFightSeconds` (2s by default), so
+very short skirmishes don't count toward the fight stats. The native scoreboard
+columns are unaffected.
 
 ## Notes
 
-- The ESO client only reports combat events that involve you, so the built-in tracker
-  has full stats for you and you-vs-them stats for others. Full stats for every player
-  need LibFights (or another provider) to supply them.
+- The ESO client only reports combat events that involve you (and your group in group
+  mode), so full fight stats for enemies aren't possible from any add-on. The native
+  scoreboard columns cover every player.
 - Every game API call is protected. If ZOS renames a function, that column goes
   empty and nothing errors. If the panel doesn't open with the scoreboard, run
   `/sbr hooks` and add the scene or fragment name to `UI/ScoreboardHook.lua`.

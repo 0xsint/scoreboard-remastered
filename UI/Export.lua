@@ -68,7 +68,8 @@ end
 
 local FIGHT_KEYS = {
     "damageDone", "healingDone", "damageTaken", "healingTaken", "dps", "hps", "killingBlows", "deaths",
-    "interrupts", "ccApplied", "ccTaken", "damageShielded", "damageBlocked", "critRate", "activeTime",
+    "interrupts", "interrupted", "ccApplied", "ccTaken", "damageShielded", "damageBlocked", "mitigated", "overheal",
+    "critRate", "maxHit", "lightAttacks", "heavyAttacks", "skillCasts", "ultimates", "weaves", "fights", "activeTime",
 }
 local VS_KEYS = { "damageFromYou", "damageToYou", "healedByYou", "healedYou", "killedByYou", "killedYou" }
 
@@ -155,6 +156,37 @@ function EX:BuildKillFeed(match)
         lines[#lines + 1] = "Your medals (in order earned):"
         for _, m in ipairs(match.myMedals) do
             lines[#lines + 1] = string.format("  %s  +%s", m.name or m.id, tostring(m.value or ""))
+        end
+    end
+    local lf = match.lf
+    if lf and lf.deaths and #lf.deaths > 0 then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "Your deaths (LibFights recap, last hits oldest first):"
+        for _, dth in ipairs(lf.deaths) do
+            lines[#lines + 1] = string.format("[%s] killed by %s%s", SBR.FormatDuration(dth.t), dth.killer or "?",
+                dth.fight and (" during " .. dth.fight) or "")
+            for _, h in ipairs(dth.hits or {}) do
+                lines[#lines + 1] = string.format("    %s %s from %s%s", SBR.FormatNumber(h.hit), h.ability or "?",
+                    h.source ~= "" and h.source or "?", h.result and (" (" .. h.result .. ")") or "")
+            end
+        end
+    end
+    local fightList = lf and lf.fightList
+    if not fightList and lf and lf.fights then
+        fightList = {}
+        for _, e in pairs(lf.fights) do
+            fightList[#fightList + 1] = { title = e.title, durationSec = e.durationSec, dps = e.dps, damage = e.me.damageDone,
+                healing = e.me.healingDone, killingBlows = e.me.killingBlows, deaths = e.me.deaths, startTimestamp = e.startTimestamp }
+        end
+        table.sort(fightList, function(a, b) return (a.startTimestamp or 0) < (b.startTimestamp or 0) end)
+    end
+    if fightList and #fightList > 0 then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "Fights (LibFights):"
+        for i, fl in ipairs(fightList) do
+            lines[#lines + 1] = string.format("  %d. %s  %s  dps %s  dmg %s  heal %s  KB %s  deaths %s", i, fl.title or "?",
+                SBR.FormatDuration(fl.durationSec), SBR.FormatNumber(fl.dps), SBR.FormatNumber(fl.damage),
+                SBR.FormatNumber(fl.healing), tostring(fl.killingBlows or 0), tostring(fl.deaths or 0))
         end
     end
     if #lines == 0 then lines[1] = "No kills recorded for this match." end

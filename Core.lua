@@ -9,7 +9,10 @@ local DEFAULTS = {
     hideEmptyColumns = true,
     showFightColumns = true,
     showVsColumns = true,
-    trackCombat = true,
+    useLibFights = true,   -- use LibFights when installed
+    lfGroupMode = true,    -- LibFights group mode: teammates' damage/healing
+    lfSaveFights = false,  -- let LibFights also save battleground fights to its own SavedVariables
+    trackCombat = true,    -- built-in combat-log fallback when LibFights is missing
     chatSummary = true,
     maxHistory = 50,
     debug = false,
@@ -28,7 +31,7 @@ end
 local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
         SBR.Hook:Install() -- catch anything created after addon load
-        SBR.Fights:DetectLibFights()
+        SBR.LibFights:Init()
         SBR.MatchLog:OnPlayerActivated()
     end)
     On("EVENT_BATTLEGROUND_STATE_CHANGED", function(_, previousState, currentState)
@@ -49,7 +52,7 @@ local HELP = {
     "/sbr reset - reset panel position",
     "/sbr attach right|left|below|free",
     "/sbr clear - delete saved history",
-    "/sbr status - fight providers and score types",
+    "/sbr status - LibFights state and score types",
     "/sbr hooks - which native scoreboard parts were hooked",
     "/sbr debug - toggle debug output",
 }
@@ -73,12 +76,8 @@ local function ListHistory()
 end
 
 local function Status()
-    local names = {}
-    for _, p in ipairs(SBR.Fights.providers) do
-        names[#names + 1] = string.format("%s%s", p.name, p.method and (" via " .. p.method) or "")
-    end
-    SBR.Print("fight providers: %s; built-in tracker %s", #names > 0 and table.concat(names, ", ") or "none",
-        SBR.sv.trackCombat and "on" or "off")
+    SBR.Print("fight data: %s; built-in tracker %s", SBR.LibFights:StatusText(),
+        SBR.FightTracker.active and "running" or (SBR.sv.trackCombat and "standby" or "off"))
     local types = {}
     for _, st in ipairs(SBR.Battleground.scoreTypes or {}) do types[#types + 1] = st.key .. "=" .. st.id end
     SBR.Print("score types: %s", table.concat(types, ", "))
@@ -142,7 +141,7 @@ local function OnAddOnLoaded(_, addonName)
     SBR.sv = ZO_SavedVars:NewAccountWide("ScoreboardRemasteredSV", 1, nil, DEFAULTS)
     SBR.MatchLog:Init(SBR.sv)
     SBR.Battleground:DiscoverScoreTypes()
-    SBR.Fights:DetectLibFights()
+    SBR.LibFights:Init()
     SBR.Hook:Install()
     SBR.Window:Create()
     SBR.Settings:Create()

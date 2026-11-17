@@ -71,12 +71,15 @@ local FIGHT_COLUMNS = {
     { key = "ccApplied", label = "CC", tip = "Crowd control applied" },
     { key = "damageShielded", label = "Shield", tip = "Damage absorbed by shields" },
     { key = "critRate", label = "Crit%", tip = "Critical hit rate", fmt = function(v) return string.format("%.0f%%", v) end },
+    { key = "maxHit", label = "Max hit", tip = "Biggest single hit" },
 }
 
 local VS_COLUMNS = {
     { key = "damageFromYou", label = "You>", tip = "Damage you dealt to this player" },
     { key = "damageToYou", label = ">You", tip = "Damage this player dealt to you" },
     { key = "healedByYou", label = "Healed", tip = "Healing you gave this player" },
+    { key = "killedByYou", label = "Killed", tip = "Times you killed this player (kill feed)" },
+    { key = "killedYou", label = "By", tip = "Times this player killed you (kill feed)" },
 }
 
 local function AnyValue(players, getter)
@@ -444,13 +447,27 @@ function UI:PlayerTooltip(p)
         stat("CC applied", f.ccApplied)
         stat("CC taken", f.ccTaken)
         stat("Crit rate", f.critRate, function(v) return string.format("%.1f%%", v) end)
+        if f.maxHit then add(string.format("  Max hit: %s%s", SBR.FormatNumber(f.maxHit), f.maxHitAbility and (" (" .. f.maxHitAbility .. ")") or "")) end
+        stat("Mitigated", f.mitigated)
+        stat("Overheal", f.overheal)
+        stat("Enemy shields soaked", f.enemyShieldAbsorbed)
+        if f.lightAttacks or f.heavyAttacks or f.skillCasts then
+            add(string.format("  LA/HA/skills/ults: %s/%s/%s/%s, weaves %s", tostring(f.lightAttacks or 0), tostring(f.heavyAttacks or 0),
+                tostring(f.skillCasts or 0), tostring(f.ultimates or 0), tostring(f.weaves or 0)))
+        end
+        stat("Fights", f.fights)
         stat("Combat time", f.activeTime, SBR.FormatDuration)
-        if type(f.topAbilities) == "table" and #f.topAbilities > 0 then
-            add("  Top abilities:")
-            for _, a in ipairs(f.topAbilities) do
-                add(string.format("    %s  %s", a.name or "?", SBR.FormatNumber(a.damage)))
+        local function abilityList(title, list)
+            if type(list) == "table" and #list > 0 then
+                add("  " .. title .. ":")
+                for _, a in ipairs(list) do
+                    local icon = a.icon and zo_iconFormat(a.icon, 16, 16) or ""
+                    add(string.format("    %s %s  %s", icon, a.name or "?", SBR.FormatNumber(a.damage)))
+                end
             end
         end
+        abilityList("Top damage", f.topAbilities)
+        abilityList("Top heals", f.topHeals)
     end
     if p.vs then
         local v = p.vs
@@ -461,6 +478,14 @@ function UI:PlayerTooltip(p)
             add(string.format("  You killed them %d, they killed you %d", v.killedByYou or 0, v.killedYou or 0))
         end
         if (v.healedByYou or 0) > 0 then add("  You healed them " .. SBR.FormatNumber(v.healedByYou)) end
+    end
+    if p.isLocal then
+        local match = self:GetViewedMatch()
+        local deaths = match and match.lf and match.lf.deaths
+        if deaths and #deaths > 0 then
+            add(" ")
+            add(string.format("Deaths with recap: %d (Kill feed button for details)", #deaths))
+        end
     end
     return table.concat(lines, "\n")
 end
@@ -508,10 +533,16 @@ function UI:RefreshHeader(match)
     end
     self.teamLabel:SetText(table.concat(teamTexts, "   "))
 
-    local src = {}
-    for _, p in ipairs(SBR.Fights.providers) do src[#src + 1] = p.name end
-    if SBR.sv.trackCombat then src[#src + 1] = SBR.FightTracker.name end
-    self.sourceLabel:SetText("Fight data: " .. (#src > 0 and table.concat(src, ", ") or "none"))
+    local src
+    if match.lf then
+        local n = match.lf.fightList and #match.lf.fightList or 0
+        if match.lf.fights then for _ in pairs(match.lf.fights) do n = n + 1 end end
+        src = string.format("LibFights, %d fight%s", n, n == 1 and "" or "s")
+    elseif SBR.FightTracker.active or (match.endedAt and SBR.sv.trackCombat) then
+        src = "built-in combat log"
+    end
+    if not match.endedAt then src = SBR.LibFights:StatusText() .. (src and ("  |  " .. src) or "") end
+    self.sourceLabel:SetText("Fight data: " .. (src or "none"))
 end
 
 function UI:Refresh()
