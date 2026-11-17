@@ -150,5 +150,9 @@ columns are unaffected.
   keybind strip, directional input and the movement controller. Like the rest of the
   add-on, it hasn't been run on a console yet. If a button doesn't show up, the
   settings panel has the open button and the open-key choice.
+- The panel uses ESO's own text colours (`ZO_NORMAL_TEXT`, `ZO_SELECTED_TEXT`, `ZO_DISABLED_TEXT`)
+  and stock list textures (row highlight, selected highlight, divider, sort arrows from
+  `EsoUI/Art/Miscellaneous/`). Each texture sits on top of a plain colour, so if a path
+  changes in a game update the panel still reads correctly, just with less polish.
 - Update `## APIVersion` in `ScoreboardRemastered.addon` to the current client
   (`/script d(GetAPIVersion())`).

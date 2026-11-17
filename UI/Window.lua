@@ -29,10 +29,10 @@ end
 
 local STYLES = {
     keyboard = {
-        pad = 12, topH = 78, headerH = 24, rowH = 22, footerH = 42, colScale = 1, detailsW = 340,
-        fontRow = "ZoFontGameSmall", fontHead = "ZoFontGameBold", fontTitle = "ZoFontWinH3",
-        fontSub = "ZoFontGameSmall", fontTeams = "ZoFontWinH4", fontDetails = "ZoFontGameSmall",
-        fontDetailsTitle = "ZoFontWinH4", iconSize = 20,
+        pad = 14, topH = 84, headerH = 26, rowH = 24, footerH = 42, colScale = 1, detailsW = 340,
+        fontRow = Font("ZoFontGameMedium", "ZoFontGame"), fontHead = Font("ZoFontHeader", "ZoFontGameBold"),
+        fontTitle = Font("ZoFontWinH1", "ZoFontWinH2"), fontSub = "ZoFontGameSmall", fontTeams = Font("ZoFontWinH3", "ZoFontWinH4"),
+        fontDetails = "ZoFontGameSmall", fontDetailsTitle = Font("ZoFontWinH3", "ZoFontWinH4"), iconSize = 22,
     },
     gamepad = {
         pad = 20, topH = 104, headerH = 34, rowH = 34, footerH = 34, colScale = 1.35, detailsW = 470,
@@ -47,6 +47,50 @@ local STYLES = {
     },
 }
 
+-- ESO's own UI colors (ZO_ColorDef globals), with the stock values as fallback.
+local function ZoColor(name, hex)
+    local c = _G[name]
+    if type(c) == "table" and type(c.UnpackRGB) == "function" then
+        local ok, r, g, b = pcall(c.UnpackRGB, c)
+        if ok and type(r) == "number" then return { r, g, b } end
+    end
+    return { SBR.HexToRGB(hex) }
+end
+local function Hex(rgb)
+    return string.format("%02X%02X%02X", math.floor(rgb[1] * 255 + 0.5), math.floor(rgb[2] * 255 + 0.5), math.floor(rgb[3] * 255 + 0.5))
+end
+local COLORS
+local function Colors()
+    if not COLORS then
+        COLORS = {
+            normal = ZoColor("ZO_NORMAL_TEXT", "C5C29E"),     -- standard list text
+            selected = ZoColor("ZO_SELECTED_TEXT", "FFFFFF"), -- selected / important values
+            disabled = ZoColor("ZO_DISABLED_TEXT", "5C5C5C"), -- empty cells
+            gpUnselected = { 0.70, 0.70, 0.70 },              -- gamepad lists dim unselected rows
+            fight = { 0.91, 0.78, 0.45 },
+            vs = { 0.60, 0.80, 0.93 },
+            you = { 0.55, 0.78, 0.93 },
+        }
+        COLORS.normalHex, COLORS.selectedHex, COLORS.disabledHex = Hex(COLORS.normal), Hex(COLORS.selected), Hex(COLORS.disabled)
+    end
+    return COLORS
+end
+local function Paint(control, rgb, a) control:SetColor(rgb[1], rgb[2], rgb[3], a or 1) end
+
+-- ESO's stock list textures. Each sits on top of a plain colour fill, so the
+-- panel still reads correctly if a path ever changes.
+local TEX = {
+    divider = "EsoUI/Art/Miscellaneous/horizontalDivider.dds",
+    rowHighlight = "EsoUI/Art/Miscellaneous/listItem_highlight.dds",
+    rowSelected = "EsoUI/Art/Miscellaneous/listItem_selectedHighlight.dds",
+    sortUp = "EsoUI/Art/Miscellaneous/list_sortHeader_icon_sortUp.dds",
+    sortDown = "EsoUI/Art/Miscellaneous/list_sortHeader_icon_sortDown.dds",
+}
+
+local function Uppercase(label)
+    if MODIFY_TEXT_TYPE_UPPERCASE and label.SetModifyTextType then label:SetModifyTextType(MODIFY_TEXT_TYPE_UPPERCASE) end
+end
+
 local nameCounter = 0
 local function NextName(kind)
     nameCounter = nameCounter + 1
@@ -59,7 +103,7 @@ local function CreateLabel(parent, font, align)
     l:SetHorizontalAlignment(align or TEXT_ALIGN_LEFT)
     l:SetVerticalAlignment(TEXT_ALIGN_CENTER)
     l:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-    l:SetColor(1, 1, 1, 1)
+    Paint(l, Colors().normal)
     return l
 end
 
@@ -211,7 +255,7 @@ function UI:BuildColumns(match)
             local value, fmt = c.value, c.fmt
             c.text = function(p)
                 local v = value(p)
-                if v == nil then return "|c666666-|r" end
+                if v == nil then return "-" end
                 return fmt and fmt(v) or SBR.FormatNumber(v)
             end
         end
@@ -249,19 +293,23 @@ function UI:Create()
 
     self.title = CreateLabel(tlw)
     self.subtitle = CreateLabel(tlw)
-    self.subtitle:SetColor(0.75, 0.75, 0.75, 1)
+    Uppercase(self.title)
+    Paint(self.title, Colors().selected)
     self.teamLabel = CreateLabel(tlw, nil, TEXT_ALIGN_RIGHT)
     self.sourceLabel = CreateLabel(tlw, nil, TEXT_ALIGN_RIGHT)
-    self.sourceLabel:SetColor(0.6, 0.6, 0.6, 1)
-    self.divider = CreateTexture(tlw, 1, 1, 1, 0.15)
+    Paint(self.sourceLabel, Colors().normal, 0.7)
+    self.divider = CreateTexture(tlw, 1, 1, 1, 0.12)
     self.divider:SetHeight(1)
+    self.dividerTex = CreateTexture(tlw, 1, 1, 1, 1)
+    self.dividerTex:SetTexture(TEX.divider)
+    self.dividerTex:SetHeight(4)
 
     self.headerRow = WM:CreateControl(NextName("Header"), tlw, CT_CONTROL)
     self.list = WM:CreateControl(NextName("List"), tlw, CT_CONTROL)
 
     self.emptyLabel = CreateLabel(self.list, "ZoFontGame", TEXT_ALIGN_CENTER)
     self.emptyLabel:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, 10)
-    self.emptyLabel:SetColor(0.7, 0.7, 0.7, 1)
+    Paint(self.emptyLabel, Colors().normal, 0.8)
 
     -- footer (keyboard buttons; in gamepad mode the keybind strip replaces them)
     local footer = WM:CreateControl(NextName("Footer"), tlw, CT_CONTROL)
@@ -289,7 +337,7 @@ function UI:Create()
 
     self.viewLabel = CreateLabel(footer)
     self.viewLabel:SetDimensions(260, 28)
-    self.viewLabel:SetColor(0.7, 0.7, 0.7, 1)
+    Paint(self.viewLabel, Colors().normal, 0.8)
 
     self:CreateDetails()
     self:ApplyStyle("keyboard")
@@ -309,7 +357,9 @@ function UI:CreateDetails()
     self.detailsClose:SetHandler("OnClicked", function() self:CloseDetails() end)
 
     self.detailsTitle = CreateLabel(pane)
+    Uppercase(self.detailsTitle)
     self.detailsBody = CreateLabel(pane)
+    Paint(self.detailsBody, Colors().selected)
     self.detailsBody:SetVerticalAlignment(TEXT_ALIGN_TOP)
     self.detailsBody:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
 end
@@ -351,6 +401,9 @@ function UI:ApplyStyle(mode)
     self.divider:ClearAnchors()
     self.divider:SetAnchor(TOPLEFT, tlw, TOPLEFT, s.pad, s.topH - 4)
     self.divider:SetAnchor(TOPRIGHT, tlw, TOPRIGHT, -s.pad, s.topH - 4)
+    self.dividerTex:ClearAnchors()
+    self.dividerTex:SetAnchor(LEFT, self.divider, LEFT, -s.pad, 0)
+    self.dividerTex:SetAnchor(RIGHT, self.divider, RIGHT, s.pad, 0)
     self.headerRow:ClearAnchors()
     self.headerRow:SetAnchor(TOPLEFT, tlw, TOPLEFT, s.pad, s.topH)
     self.headerRow:SetHeight(s.headerH)
@@ -430,6 +483,10 @@ function UI:GetHeader(i)
     if h then return h end
     h = CreateLabel(self.headerRow, self.style.fontHead)
     h:SetHeight(self.style.headerH)
+    Uppercase(h)
+    h.sortIcon = CreateTexture(self.headerRow, 1, 1, 1, 1)
+    h.sortIcon:SetDimensions(16, 16)
+    h.sortIcon:SetHidden(true)
     h:SetMouseEnabled(true)
     h:SetHandler("OnMouseUp", function(control, button, upInside)
         if upInside and control.column then self:SortBy(control.column.key) end
@@ -461,13 +518,22 @@ function UI:GetRow(i)
     row:SetMouseEnabled(true)
     row.bg = CreateTexture(row, 1, 1, 1, 0)
     row.bg:SetAnchorFill(row)
+    row.highlight = CreateTexture(row, 1, 1, 1, 1)
+    row.highlight:SetAnchorFill(row)
+    row.highlight:SetHidden(true)
     row.strip = CreateTexture(row, 1, 1, 1, 1)
     row.strip:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 1)
     row.cells = {}
     row:SetHandler("OnMouseEnter", function(control)
-        if self.mode == "keyboard" then control.bg:SetColor(1, 1, 1, 0.12) end
+        if self.mode == "keyboard" then
+            control.hovered = true
+            self:PaintRowBackground(control)
+        end
     end)
-    row:SetHandler("OnMouseExit", function(control) self:PaintRowBackground(control) end)
+    row:SetHandler("OnMouseExit", function(control)
+        control.hovered = false
+        self:PaintRowBackground(control)
+    end)
     row:SetHandler("OnMouseUp", function(control, button, upInside)
         if upInside and button == MOUSE_BUTTON_INDEX_LEFT and control.player then
             self:OnRowClicked(control.player)
@@ -478,17 +544,37 @@ function UI:GetRow(i)
     return row
 end
 
+-- ESO list look: faint alternating rows, the stock hover glow, the stock
+-- selected bar (gold) and a cool tint on your own row. Text brightens on the
+-- row in focus; in gamepad mode the other rows dim, like ESO's gamepad lists.
 function UI:PaintRowBackground(row)
-    local selected = row.player and self.selectedKey == PlayerKey(row.player)
-        and (self.mode == "gamepad" or self.detailsOpen)
+    local C = Colors()
+    local gamepad = self.mode == "gamepad"
+    local selected = row.player and self.selectedKey == PlayerKey(row.player) and (gamepad or self.detailsOpen)
+    local isLocal = row.player and row.player.isLocal
     if selected then
-        row.bg:SetColor(1, 0.85, 0.45, self.mode == "gamepad" and 0.28 or 0.22)
-    elseif row.player and row.player.isLocal then
-        row.bg:SetColor(0.31, 0.76, 0.97, 0.18)
+        row.bg:SetColor(1, 0.82, 0.42, gamepad and 0.22 or 0.16)
+    elseif isLocal then
+        row.bg:SetColor(0.31, 0.62, 0.85, 0.16)
     elseif row.index and row.index % 2 == 0 then
-        row.bg:SetColor(1, 1, 1, 0.04)
+        row.bg:SetColor(1, 1, 1, 0.035)
     else
         row.bg:SetColor(1, 1, 1, 0)
+    end
+    if selected then
+        row.highlight:SetTexture(TEX.rowSelected)
+        row.highlight:SetColor(1, 0.86, 0.5, 0.9)
+        row.highlight:SetHidden(false)
+    elseif row.hovered and not gamepad then
+        row.highlight:SetTexture(TEX.rowHighlight)
+        row.highlight:SetColor(1, 1, 1, 0.8)
+        row.highlight:SetHidden(false)
+    else
+        row.highlight:SetHidden(true)
+    end
+    local text = (selected or isLocal or row.hovered) and C.selected or (gamepad and C.gpUnselected or C.normal)
+    for _, cell in ipairs(row.cells or {}) do
+        if cell.isEmpty then Paint(cell, C.disabled) else Paint(cell, text) end
     end
 end
 
@@ -564,7 +650,7 @@ function UI:RefreshDetails()
     end
     local s = self.style
     local title = p.characterName ~= "" and p.characterName or p.displayName or "?"
-    if p.isLocal then title = "|c4FC3F7" .. title .. "|r" end
+    if p.isLocal then title = title .. "  |c" .. Colors().normalHex .. "(you)|r" end
     self.detailsTitle:SetText(title)
     self.detailsBody:SetText(self:PlayerDetailsText(p))
     local h = self.detailsBody:GetTextHeight() + s.rowH + s.pad * 2 + 10
@@ -679,6 +765,10 @@ function UI:SortedPlayers(match)
     return list
 end
 
+local function Section(title)
+    return "|c" .. Colors().normalHex .. string.upper(title) .. "|r"
+end
+
 function UI:PlayerDetailsText(p)
     local lines = {}
     local function add(s) lines[#lines + 1] = s end
@@ -694,7 +784,7 @@ function UI:PlayerDetailsText(p)
     end
     if p.medals and #p.medals > 0 then
         add(" ")
-        add("|cD0C4A0Medals|r")
+        add(Section("Medals"))
         for _, m in ipairs(p.medals) do
             local icon = (m.icon and m.icon ~= "") and zo_iconFormat(m.icon, iconSize, iconSize) or ""
             add(string.format("  %s %s x%d", icon, m.name or "?", m.count or 1))
@@ -703,11 +793,11 @@ function UI:PlayerDetailsText(p)
     if p.fight then
         local f = p.fight
         add(" ")
-        add("|cD0C4A0Fight data|r" .. (f.source and (" |c999999(" .. f.source .. ")|r") or ""))
+        add(Section("Fight data") .. (f.source and (" |c" .. Colors().normalHex .. "(" .. f.source .. ")|r") or ""))
         -- core stats always show; the rest only when non-zero, to keep the pane short on a TV
         local function stat(label, v, fmt, keepZero)
             if v ~= nil and (keepZero or v ~= 0) then
-                add(string.format("  %s: %s", label, fmt and fmt(v) or SBR.FormatNumber(v)))
+                add(string.format("  |c%s%s:|r %s", Colors().normalHex, label, fmt and fmt(v) or SBR.FormatNumber(v)))
             end
         end
         local pct = function(v) return string.format("%.1f%%", v) end
@@ -754,7 +844,7 @@ function UI:PlayerDetailsText(p)
     if p.vs then
         local v = p.vs
         add(" ")
-        add("|cD0C4A0You vs them|r")
+        add(Section("You vs them"))
         add(string.format("  You dealt %s, took %s", SBR.FormatNumber(v.damageFromYou), SBR.FormatNumber(v.damageToYou)))
         if (v.killedByYou or 0) > 0 or (v.killedYou or 0) > 0 then
             add(string.format("  You killed them %d, they killed you %d", v.killedByYou or 0, v.killedYou or 0))
@@ -846,13 +936,23 @@ function UI:Refresh()
         h:SetAnchor(TOPLEFT, self.headerRow, TOPLEFT, x, 0)
         h:SetWidth(c.width)
         h:SetHorizontalAlignment(c.align)
-        local arrow = ""
-        if self.sort.key == c.key then arrow = self.sort.desc and " v" or " ^" end
-        h:SetText(c.label .. arrow)
-        if self.mode == "gamepad" and self.sort.key == c.key then h:SetColor(1, 1, 1, 1)
-        elseif c.fight then h:SetColor(1, 0.85, 0.45, 1)
-        elseif c.vs then h:SetColor(0.6, 0.85, 1, 1)
-        else h:SetColor(0.85, 0.85, 0.85, 1) end
+        h:SetText(c.label)
+        local sorted = self.sort.key == c.key
+        local C = Colors()
+        if sorted then Paint(h, C.selected)
+        elseif c.fight then Paint(h, C.fight)
+        elseif c.vs then Paint(h, C.vs)
+        else Paint(h, C.normal) end
+        h.sortIcon:SetHidden(not sorted)
+        if sorted then
+            h.sortIcon:SetTexture(self.sort.desc and TEX.sortDown or TEX.sortUp)
+            h.sortIcon:ClearAnchors()
+            if c.align == TEXT_ALIGN_RIGHT then
+                h.sortIcon:SetAnchor(RIGHT, h, LEFT, -1 + c.width - h:GetTextWidth() - 2, 0)
+            else
+                h.sortIcon:SetAnchor(LEFT, h, LEFT, h:GetTextWidth() + 2, 0)
+            end
+        end
         c.x = x
         x = x + c.width + 6
     end
@@ -890,10 +990,12 @@ function UI:Refresh()
             cell:SetAnchor(TOPLEFT, row, TOPLEFT, c.x, 0)
             cell:SetWidth(c.width)
             cell:SetHorizontalAlignment(c.align)
-            cell:SetText(c.text(p))
-            if p.isLocal and c.key == "name" then cell:SetColor(0.31, 0.76, 0.97, 1) else cell:SetColor(1, 1, 1, 1) end
+            local text = c.text(p)
+            cell.isEmpty = text == "-"
+            cell:SetText(text)
         end
         for ci = #cols + 1, #row.cells do row.cells[ci]:SetHidden(true) end
+        self:PaintRowBackground(row)
     end
     for i = #players + 1, #self.rows do
         self.rows[i]:SetHidden(true)
