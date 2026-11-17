@@ -15,6 +15,7 @@ local function Options()
     end
     return {
         { type = "button", name = "Open Scoreboard Remastered", func = function() SBR.Window:Show(true) end },
+        { type = "button", name = "Open match database", func = function() SBR.MatchBrowser:Open() end },
         { type = "header", name = "Display" },
         { type = "checkbox", name = "Open with the native scoreboard (mouse)", pcOnly = true,
           tooltip = "In keyboard mode the panel opens and closes with the battleground scoreboard.",
@@ -58,7 +59,12 @@ local function Options()
           get = function() return sv.chatSummary end, set = function(v) sv.chatSummary = v end },
         { type = "slider", name = "Matches kept in history", min = 5, max = SBR.IsConsole() and 25 or 200, step = 5,
           get = function() return sv.maxHistory end, set = function(v) sv.maxHistory = v end },
+        { type = "slider", name = "Match database records", min = 50, max = SBR.IsConsole() and 300 or 1000, step = 50,
+          tooltip = "Compact summaries for the match database and lifetime stats. Kept far longer than full scoreboards.",
+          get = function() return sv.maxRecords end, set = function(v) sv.maxRecords = v end },
         { type = "button", name = "Clear history", dangerous = true, func = function() SBR.MatchLog:ClearHistory() end },
+        { type = "button", name = "Clear match database", dangerous = true,
+          func = function() ZO_ClearNumericallyIndexedTable(SBR.MatchDB:GetRecords()) end },
         { type = "checkbox", name = "Debug output",
           get = function() return sv.debug end, set = function(v) sv.debug = v end },
     }

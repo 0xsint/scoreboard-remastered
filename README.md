@@ -96,6 +96,37 @@ details pane. Settings has an **Open Scoreboard Remastered** button so you can b
 saved matches outside a battleground, since consoles have no slash commands. On console,
 10 matches are kept by default because console SavedVariables are smaller.
 
+### Match database (gamepad screen)
+
+Every finished match also writes a compact summary record to a match database. It
+keeps 500 records on PC and 150 on console, far longer than full scoreboards. Open it with **R3**
+from the Scoreboard Remastered screen, the settings panel, or `/sbr db` in gamepad mode.
+
+It uses ESO's gamepad layout, with your matches on the left and a detail card on the right:
+
+- **Match list:** each row has a result color bar, class icon, map, mode, date, duration,
+  K/D/A, result and damage. Above the list are lifetime chips for win rate, K/D and current streak.
+- **Match card:**
+  - A Victory / Defeat banner with the map, mode, team size, duration, date, and your class and character.
+  - Team scores in team colors.
+  - Six stat tiles (kills, deaths, assists, damage, healing, score), each with an icon.
+  - Your rank on your team and overall, the match MVP and your K/D/A ratio.
+  - Medals with their icons and counts.
+  - Your top three abilities with icons and damage bars.
+  - Fight highlights: DPS, max hit, crit rate, fights and death recaps.
+- **Lifetime card** (Y / Triangle): win rate, K/D, times MVP, best damage, best healing and
+  most kills, plus a record for each class (with icons) and win-rate bars for each map.
+
+| Xbox | PlayStation | Action |
+|---|---|---|
+| Up / Down | same | select a match |
+| Left / Right | same | filter: all, victories, defeats, this map, this class |
+| A | Cross | open the match's full scoreboard (while it's still stored) |
+| X | Square | sort: newest, score, kills, K/D/A, damage, healing, medals |
+| Y | Triangle | match card / lifetime stats |
+| LB / RB | L1 / R1 | page up / down |
+| B | Circle | back |
+
 ### Slash commands (PC)
 
 | Command | |
@@ -104,6 +135,7 @@ saved matches outside a battleground, since consoles have no slash commands. On 
 | `/sbr export` / `/sbr kills` | CSV / kill feed of the viewed match |
 | `/sbr history [n]` | list saved matches / open match *n* |
 | `/sbr live` | back to the live match |
+| `/sbr db` | match database (gamepad mode) |
 | `/sbr attach right\|left\|below\|free`, `/sbr reset` | positioning |
 | `/sbr status` | LibFights state and the score types detected |
 | `/sbr hooks` | which native scoreboard scenes/fragments were hooked |

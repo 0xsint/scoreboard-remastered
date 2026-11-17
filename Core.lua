@@ -15,6 +15,7 @@ local DEFAULTS = {
     chatSummary = true,
     maxHistory = 50,       -- 10 on console (smaller SavedVariables budget)
     gamepadOpenKey = "right_stick", -- button added to the native gamepad scoreboard
+    maxRecords = 500,      -- match database records (150 on console)
     debug = false,
     history = {},
 }
@@ -49,6 +50,7 @@ local HELP = {
     "/sbr kills - kill feed of the viewed match",
     "/sbr history [n] - list saved matches, or open match n",
     "/sbr live - back to the live/last match",
+    "/sbr db - match database (gamepad mode)",
     "/sbr reset - reset panel position",
     "/sbr attach right|left|below|free",
     "/sbr clear - delete saved history",
@@ -113,6 +115,8 @@ local function Slash(args)
         else
             ListHistory()
         end
+    elseif cmd == "db" or cmd == "database" then
+        SBR.MatchBrowser:Open()
     elseif cmd == "live" then
         W:Show(true)
         W:SetView(nil)
@@ -144,14 +148,19 @@ local function OnAddOnLoaded(_, addonName)
     if addonName ~= SBR.name then return end
     EVENT_MANAGER:UnregisterForEvent(SBR.name, EVENT_ADD_ON_LOADED)
 
-    if SBR.IsConsole() then DEFAULTS.maxHistory = 10 end
+    if SBR.IsConsole() then
+        DEFAULTS.maxHistory = 10
+        DEFAULTS.maxRecords = 150
+    end
     SBR.sv = ZO_SavedVars:NewAccountWide("ScoreboardRemasteredSV", 1, nil, DEFAULTS)
     SBR.MatchLog:Init(SBR.sv)
+    SBR.MatchDB:Init(SBR.sv)
     SBR.Battleground:DiscoverScoreTypes()
     SBR.LibFights:Init()
     SBR.Hook:Install()
     SBR.Window:Create()
     SBR.Gamepad:Init()
+    SBR.MatchBrowser:Init()
     SBR.Settings:Create()
     RegisterEvents()
 

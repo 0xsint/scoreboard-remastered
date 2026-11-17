@@ -242,6 +242,7 @@ function ML:Finalize(reason)
     match.startedMs = nil
 
     table.insert(self.sv.history, match)
+    if reason ~= "reload" or next(match.players or {}) then SBR.MatchDB:Add(match) end
     local max = self.sv.maxHistory or 50
     while #self.sv.history > max do table.remove(self.sv.history, 1) end
     self.sv.current = nil

@@ -112,6 +112,18 @@ function FT:ResolveName(name, unitId, unitType)
     return unitId and self.unitNames[unitId] or ""
 end
 
+-- ability name -> icon, so every player's top abilities can show icons
+function FT:NoteAbility(name, abilityId)
+    local icons = self.ledger.icons
+    if not icons then
+        icons = {}
+        self.ledger.icons = icons
+    end
+    if icons[name] == nil and abilityId then
+        icons[name] = SBR.API("GetAbilityIcon", abilityId) or false
+    end
+end
+
 function FT:MarkActive(u, name, now)
     local last = self.lastActive[name]
     if last and now - last <= ACTIVE_GAP_MS then u.activeMs = u.activeMs + (now - last) end
@@ -146,7 +158,10 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
             src.hits = src.hits + 1
             if CRIT[result] then src.crits = src.crits + 1 end
             if hit > src.maxHit then src.maxHit, src.maxHitAbility = hit, ability end
-            if ability ~= "" then src.abilities[ability] = (src.abilities[ability] or 0) + hit end
+            if ability ~= "" then
+                src.abilities[ability] = (src.abilities[ability] or 0) + hit
+                self:NoteAbility(ability, abilityId)
+            end
             self:MarkActive(src, srcName, now)
         end
         if tgt then
@@ -169,7 +184,10 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
             src.healingDone = src.healingDone + hit
             src.healHits = src.healHits + 1
             if CRIT[result] then src.healCrits = src.healCrits + 1 end
-            if ability ~= "" then src.heals[ability] = (src.heals[ability] or 0) + hit end
+            if ability ~= "" then
+                src.heals[ability] = (src.heals[ability] or 0) + hit
+                self:NoteAbility(ability, abilityId)
+            end
             self:MarkActive(src, srcName, now)
         end
         if tgt then tgt.healingTaken = tgt.healingTaken + hit end
@@ -200,9 +218,12 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
     end
 end
 
-local function Top(map, n)
+local function Top(map, n, icons)
     local list = {}
-    for name, total in pairs(map or {}) do list[#list + 1] = { name = name, damage = total } end
+    for name, total in pairs(map or {}) do
+        local icon = icons and icons[name]
+        list[#list + 1] = { name = name, damage = total, icon = icon or nil }
+    end
     table.sort(list, function(a, b) return a.damage > b.damage end)
     for i = #list, n + 1, -1 do list[i] = nil end
     return list
@@ -228,8 +249,8 @@ function FT:GetPlayerStats(characterName, isEnemy)
     if u.healHits > 0 then s.healCritRate = u.healCrits / u.healHits * 100 end
     if u.maxHit == 0 then s.maxHit = nil end
     if isEnemy and u.healingDone == 0 then s.healingDone, s.hps = nil, nil end
-    s.topAbilities = Top(u.abilities, TOP_N)
-    s.topHeals = Top(u.heals, 3)
+    s.topAbilities = Top(u.abilities, TOP_N, self.ledger.icons)
+    s.topHeals = Top(u.heals, 3, self.ledger.icons)
     s.source = isEnemy and (FT.name .. ", vs your team") or FT.name
     return s
 end

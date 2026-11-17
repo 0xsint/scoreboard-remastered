@@ -12,11 +12,13 @@ Util.lua
 Data/Battleground.lua
 Data/FightTracker.lua
 Data/LibFights.lua
+Data/MatchDB.lua
 Data/MatchLog.lua
 UI/Window.lua
 UI/Export.lua
 UI/ScoreboardHook.lua
 UI/Gamepad.lua
+UI/MatchBrowser.lua
 UI/Settings.lua
 Core.lua
 Bindings.xml

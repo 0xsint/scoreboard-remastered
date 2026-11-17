@@ -79,7 +79,11 @@ function SBR.FormatNumber(n)
     local a = math.abs(n)
     if a >= 1e6 then return string.format("%.2fM", n / 1e6) end
     if a >= 1e4 then return string.format("%.1fk", n / 1e3) end
-    if n ~= math.floor(n) then return string.format("%.1f", n) end
+    if n ~= math.floor(n) then
+        -- rates like DPS read as whole numbers; keep one decimal only for small values
+        if a >= 100 then return tostring(math.floor(n + 0.5)) end
+        return string.format("%.1f", n)
+    end
     return tostring(n)
 end
 
@@ -93,7 +97,7 @@ function SBR.FormatTimestamp(ts)
     if type(ts) ~= "number" then return "-" end
     local date = SBR.API("GetDateStringFromTimestamp", ts) or ""
     local time = SBR.API("ZO_FormatTime", ts % 86400, TIME_FORMAT_STYLE_CLOCK_TIME, TIME_FORMAT_PRECISION_TWENTY_FOUR_HOUR) or ""
-    return (date .. " " .. time):gsub("^%s+", "")
+    return ((date .. " " .. time):gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 function SBR.Colorize(hex, text)

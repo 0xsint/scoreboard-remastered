@@ -10,6 +10,7 @@
 --   Y / Triangle                   kill feed
 --   LB / RB (L1 / R1)              previous / next saved match
 --   Left stick click (L3)          group by team on / off
+--   Right stick click (R3)         match database (UI/MatchBrowser.lua)
 -- While the native battleground scoreboard is open, an "Open Remastered"
 -- button (right stick click by default) is added to its keybind strip.
 local SBR = ScoreboardRemastered
@@ -172,6 +173,12 @@ function GP:BuildKeybinds()
             keybind = "UI_SHORTCUT_RIGHT_SHOULDER",
             callback = function() W:Step(1) end,
             visible = function() return table_() and W.viewIndex ~= nil end,
+        },
+        {
+            name = "Match database",
+            keybind = "UI_SHORTCUT_RIGHT_STICK",
+            callback = function() SBR.MatchBrowser:Open() end,
+            visible = table_,
         },
         {
             name = function() return SBR.sv.groupByTeam and "By team: on" or "By team: off" end,
