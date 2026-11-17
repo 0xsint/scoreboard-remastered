@@ -45,12 +45,18 @@ function Hook:OnVisibility(id, control, newState)
         if control then self.anchorControl = control end
         SBR.Debug("native scoreboard shown (%s)", id)
         SBR.MatchLog:RequestSnapshot()
-        SBR.Window:OnNativeShown()
+        if SBR.IsGamepad() then
+            -- no cursor: offer a button on the native scoreboard's keybind strip instead
+            SBR.Gamepad:AddOpenKeybind()
+        else
+            SBR.Window:OnNativeShown()
+        end
     elseif HIDDEN[newState] then
         self.visible[id] = nil
         if next(self.visible) == nil then
             SBR.Debug("native scoreboard hidden (%s)", id)
-            SBR.Window:OnNativeHidden()
+            SBR.Gamepad:RemoveOpenKeybind()
+            if not SBR.IsGamepad() then SBR.Window:OnNativeHidden() end
         end
     end
 end

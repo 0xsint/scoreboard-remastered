@@ -9,8 +9,9 @@ of your matches.
 
 Copy this folder into
 `Documents/Elder Scrolls Online/live/AddOns/ScoreboardRemastered/`
-(the folder name must match `ScoreboardRemastered.txt`). Optional: LibFights,
-LibAddonMenu-2.0 (for a settings panel).
+(the folder name must match `ScoreboardRemastered.addon`). Works on PC/Mac and on
+console (Xbox / PlayStation). Optional: LibFights, LibAddonMenu-2.0 (PC settings
+panel), LibHarvensAddonSettings (console / gamepad settings panel).
 
 ## What it logs
 
@@ -62,13 +63,40 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 
 ## Using it
 
+### PC with mouse and keyboard
+
 - The panel opens and closes with the native battleground scoreboard and anchors
   to its right side. Drag it to give it a fixed position (`/sbr reset` undoes this).
-- Click a column header to sort. Hover a row to see medals, all fight stats and
-  the you-vs-them breakdown.
+- **Click a row** to open its details beside the panel: medals, every fight stat, top
+  abilities and the you-vs-them breakdown. Click the row again, or the X, to close.
+- Click a column header to sort. Hover a header to see what it measures.
 - `<` `Live` `>` browse saved matches. **Export** gives a CSV and **Kill feed** gives
   the kill log, both in a pre-selected box ready for Ctrl+C.
 - Keybinds: *Controls → Scoreboard Remastered*.
+
+### Console, or gamepad mode on PC
+
+While the native battleground scoreboard is open, its button bar gets
+**Open Remastered** (right stick click by default; you can change it in settings).
+That opens the panel on its own screen with your row selected:
+
+| Xbox | PlayStation | Action |
+|---|---|---|
+| D-pad / left stick up, down | same | move the selected row |
+| D-pad / left stick left, right | same | sort by the previous / next column |
+| **A** | **Cross** | show / hide details for the selected row (they follow the selection) |
+| B | Circle | close the kill feed, then details, then the panel |
+| X | Square | flip the sort order |
+| Y | Triangle | kill feed (scroll with up/down, page with left/right) |
+| LB / RB | L1 / R1 | previous / next saved match |
+| L3 | L3 | group by team on / off |
+
+The gamepad table uses bigger text and fewer columns. The rest of the stats are in the
+details pane. Settings has an **Open Scoreboard Remastered** button so you can browse
+saved matches outside a battleground, since consoles have no slash commands. On console,
+10 matches are kept by default because console SavedVariables are smaller.
+
+### Slash commands (PC)
 
 | Command | |
 |---|---|
@@ -118,5 +146,9 @@ columns are unaffected.
 - Every game API call is protected. If ZOS renames a function, that column goes
   empty and nothing errors. If the panel doesn't open with the scoreboard, run
   `/sbr hooks` and add the scene or fragment name to `UI/ScoreboardHook.lua`.
-- Update `## APIVersion` in `ScoreboardRemastered.txt` to the current client
+- The gamepad view uses ESO's standard gamepad building blocks: its own scene, the
+  keybind strip, directional input and the movement controller. Like the rest of the
+  add-on, it hasn't been run on a console yet. If a button doesn't show up, the
+  settings panel has the open button and the open-key choice.
+- Update `## APIVersion` in `ScoreboardRemastered.addon` to the current client
   (`/script d(GetAPIVersion())`).

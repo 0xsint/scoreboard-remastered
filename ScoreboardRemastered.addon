@@ -5,7 +5,7 @@
 ## APIVersion: 101047 101048
 ## Description: Remastered battleground scoreboard. Logs every stat the native scoreboard shows (all score types, medals, classes, teams, kill feed) plus fight data from LibFights, and attaches itself to the native battleground scoreboard.
 ## SavedVariables: ScoreboardRemasteredSV
-## OptionalDependsOn: LibFights LibAddonMenu-2.0
+## OptionalDependsOn: LibFights LibAddonMenu-2.0 LibHarvensAddonSettings
 
 lang/en.lua
 Util.lua
@@ -16,6 +16,7 @@ Data/MatchLog.lua
 UI/Window.lua
 UI/Export.lua
 UI/ScoreboardHook.lua
+UI/Gamepad.lua
 UI/Settings.lua
 Core.lua
 Bindings.xml

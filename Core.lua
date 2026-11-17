@@ -13,7 +13,8 @@ local DEFAULTS = {
     lfSaveFights = false,  -- let LibFights also save battleground fights to its own SavedVariables
     trackCombat = true,    -- combat ledger: fight stats for every player on the scoreboard
     chatSummary = true,
-    maxHistory = 50,
+    maxHistory = 50,       -- 10 on console (smaller SavedVariables budget)
+    gamepadOpenKey = "right_stick", -- button added to the native gamepad scoreboard
     debug = false,
     history = {},
 }
@@ -143,17 +144,21 @@ local function OnAddOnLoaded(_, addonName)
     if addonName ~= SBR.name then return end
     EVENT_MANAGER:UnregisterForEvent(SBR.name, EVENT_ADD_ON_LOADED)
 
+    if SBR.IsConsole() then DEFAULTS.maxHistory = 10 end
     SBR.sv = ZO_SavedVars:NewAccountWide("ScoreboardRemasteredSV", 1, nil, DEFAULTS)
     SBR.MatchLog:Init(SBR.sv)
     SBR.Battleground:DiscoverScoreTypes()
     SBR.LibFights:Init()
     SBR.Hook:Install()
     SBR.Window:Create()
+    SBR.Gamepad:Init()
     SBR.Settings:Create()
     RegisterEvents()
 
-    SLASH_COMMANDS["/sbr"] = Slash
-    SLASH_COMMANDS["/scoreboard"] = Slash
+    if SLASH_COMMANDS then -- not available on console
+        SLASH_COMMANDS["/sbr"] = Slash
+        SLASH_COMMANDS["/scoreboard"] = Slash
+    end
 end
 
 EVENT_MANAGER:RegisterForEvent(SBR.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)

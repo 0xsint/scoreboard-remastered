@@ -136,7 +136,11 @@ function EX:Show(match)
         SBR.Print("No match to export.")
         return
     end
-    self:Open("Export: " .. (match.name or "Battleground"), self:BuildCSV(match))
+    if SBR.IsGamepad() then
+        self.reader:Open("Export: " .. (match.name or "Battleground"), self:BuildCSV(match))
+    else
+        self:Open("Export: " .. (match.name or "Battleground"), self:BuildCSV(match))
+    end
 end
 
 function EX:BuildKillFeed(match)
@@ -202,5 +206,86 @@ function EX:ShowKillFeed(match)
         SBR.Print("No match selected.")
         return
     end
-    self:Open("Kill feed: " .. (match.name or "Battleground"), self:BuildKillFeed(match))
+    local title, text = "Kill feed: " .. (match.name or "Battleground"), self:BuildKillFeed(match)
+    if SBR.IsGamepad() then
+        self.reader:Open(title, text)
+    else
+        self:Open(title, text)
+    end
+end
+
+---------------------------------------------------------------------------
+-- Gamepad reader: consoles have no clipboard and no mouse, so long text is
+-- shown a page at a time and scrolled with the d-pad (UI/Gamepad.lua).
+---------------------------------------------------------------------------
+local Reader = { lines = {}, offset = 0, page = 22 }
+EX.reader = Reader
+
+function Reader:Create()
+    if self.control then return end
+    local tlw = WM:CreateTopLevelWindow("ScoreboardRemasteredReader")
+    self.control = tlw
+    tlw:SetHidden(true)
+    tlw:SetDimensions(1100, 820)
+    tlw:SetAnchor(CENTER, GuiRoot, CENTER, 0, -20)
+    tlw:SetDrawLayer(DL_OVERLAY)
+    tlw:SetDrawTier(DT_HIGH)
+    tlw:SetDrawLevel(20)
+
+    local ok, bg = pcall(WM.CreateControlFromVirtual, WM, "$(parent)BG", tlw, "ZO_DefaultBackdrop_Gamepad")
+    if not ok or not bg then bg = WM:CreateControlFromVirtual("$(parent)BG", tlw, "ZO_DefaultBackdrop") end
+    bg:SetAnchorFill(tlw)
+
+    local title = WM:CreateControl("$(parent)Title", tlw, CT_LABEL)
+    title:SetFont(_G.ZoFontGamepadBold34 and "ZoFontGamepadBold34" or "ZoFontWinH2")
+    title:SetAnchor(TOPLEFT, tlw, TOPLEFT, 24, 18)
+    self.title = title
+
+    local body = WM:CreateControl("$(parent)Body", tlw, CT_LABEL)
+    body:SetFont(_G.ZoFontGamepad22 and "ZoFontGamepad22" or "ZoFontGame")
+    body:SetAnchor(TOPLEFT, title, BOTTOMLEFT, 0, 14)
+    body:SetDimensions(1052, 690)
+    body:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    self.body = body
+
+    local footer = WM:CreateControl("$(parent)Footer", tlw, CT_LABEL)
+    footer:SetFont(_G.ZoFontGamepad22 and "ZoFontGamepad22" or "ZoFontGame")
+    footer:SetColor(0.7, 0.7, 0.7, 1)
+    footer:SetAnchor(BOTTOMLEFT, tlw, BOTTOMLEFT, 24, -14)
+    self.footer = footer
+end
+
+function Reader:Open(titleText, text)
+    self:Create()
+    self.lines = {}
+    for line in (text .. "\n"):gmatch("(.-)\n") do self.lines[#self.lines + 1] = line end
+    self.offset = 0
+    self.title:SetText(titleText)
+    self.control:SetHidden(false)
+    self:Render()
+end
+
+function Reader:Render()
+    local last = math.min(#self.lines, self.offset + self.page)
+    self.body:SetText(table.concat(self.lines, "\n", self.offset + 1, last))
+    self.footer:SetText(string.format("Lines %d-%d of %d   Up/Down scroll, Left/Right page", math.min(self.offset + 1, #self.lines), last, #self.lines))
+end
+
+function Reader:Scroll(delta)
+    local maxOffset = math.max(0, #self.lines - self.page)
+    local new = zo_clamp(self.offset + delta, 0, maxOffset)
+    if new ~= self.offset then
+        self.offset = new
+        self:Render()
+    end
+end
+
+function Reader:PageSize() return self.page end
+
+function Reader:IsOpen()
+    return self.control ~= nil and not self.control:IsHidden()
+end
+
+function Reader:Close()
+    if self.control then self.control:SetHidden(true) end
 end
