@@ -141,7 +141,7 @@ local function Extract(f)
     end
     e.me.damageBlocked = T.blockedDamageIn
     e.me.maxHit = s.maxHit
-    e.me.maxHitAbility = s.maxHitAbility
+    e.me.maxHitAbility = s.maxHitAbility and SBR.CleanName(s.maxHitAbility) or nil
 
     e.targets = {}
     for _, t in ipairs(SBR.SafeCall(f.GetTargets, f) or {}) do
@@ -168,11 +168,11 @@ local function Extract(f)
 
     e.abilities = {}
     for _, a in ipairs(SBR.SafeCall(f.GetAbilityBreakdown, f, "damageOut", "total", TOP_ABILITIES) or {}) do
-        e.abilities[#e.abilities + 1] = { id = a.id, name = a.name, icon = a.icon, total = a.total, hits = a.hits, crits = a.crits }
+        e.abilities[#e.abilities + 1] = { id = a.id, name = SBR.CleanName(a.name), icon = a.icon, total = a.total, hits = a.hits, crits = a.crits }
     end
     e.healAbilities = {}
     for _, a in ipairs(SBR.SafeCall(f.GetAbilityBreakdown, f, "healOut", "total", TOP_ABILITIES) or {}) do
-        e.healAbilities[#e.healAbilities + 1] = { id = a.id, name = a.name, icon = a.icon, total = a.total }
+        e.healAbilities[#e.healAbilities + 1] = { id = a.id, name = SBR.CleanName(a.name), icon = a.icon, total = a.total }
     end
     return e
 end
@@ -208,7 +208,10 @@ function LFI:OnDeath(fight, death)
     for i = math.max(1, #recap - RECAP_HITS + 1), #recap do
         local h = recap[i]
         hits[#hits + 1] = {
-            abilityId = h.abilityId, ability = h.abilityName, hit = h.hit, overflow = h.overflow,
+            abilityId = h.abilityId,
+            ability = SBR.CleanName((h.abilityName ~= nil and h.abilityName ~= "") and h.abilityName
+                or (h.abilityId and SBR.API("GetAbilityName", h.abilityId)) or ""),
+            hit = h.hit, overflow = h.overflow,
             source = SBR.CleanName(h.source or ""), result = h.resultName,
         }
     end
