@@ -8,9 +8,9 @@
 --     fight still running at each snapshot (GetCurrentFight).
 --   * sums those fights into per-player data for the scoreboard:
 --       you       -> the full FightSummary, added up across fights
---       teammates -> damage/healing from group mode (f:GetGroup())
 --       everyone  -> damage you dealt them (f:GetTargets()), damage they dealt
 --                    you (f:GetSources()), healing you gave them (f.healTargets)
+--   Other players' own stats come from the combat ledger (FightTracker.lua).
 --   * keeps your death recaps (DEATH callback) and a list of the match's fights.
 local SBR = ScoreboardRemastered
 local LFI = { weStarted = false }
@@ -77,7 +77,6 @@ function LFI:Attach(match)
         match.lf.sharedSession = true -- another add-on or the user owns this logging session
     else
         local ok = SBR.SafeCall(lf.Start_Logging, {
-            groupMode = SBR.sv.lfGroupMode,
             rawEvents = false,             -- not needed here; keeps memory down in long matches
             saveFights = SBR.sv.lfSaveFights,
         })
@@ -165,20 +164,6 @@ local function Extract(f)
     for unitId, amount in pairs(f.healTargets or {}) do
         local n = SBR.CleanName(SBR.SafeCall(f.GetUnitName, f, unitId) or "")
         if n ~= "" then e.heals[n] = (e.heals[n] or 0) + Num(amount) end
-    end
-
-    e.group = {}
-    for _, g in ipairs(SBR.SafeCall(f.GetGroup, f) or {}) do
-        local n = SBR.CleanName(g.name)
-        if n ~= "" then
-            local x = e.group[n] or { damage = 0, healing = 0, hits = 0, crits = 0, shieldAbsorbed = 0 }
-            x.damage = x.damage + Num(g.damage)
-            x.healing = x.healing + Num(g.healing)
-            x.hits = x.hits + Num(g.hits)
-            x.crits = x.crits + Num(g.crits)
-            x.shieldAbsorbed = x.shieldAbsorbed + Num(g.shieldAbsorbed)
-            e.group[n] = x
-        end
     end
 
     e.abilities = {}
@@ -274,7 +259,7 @@ function LFI:BuildAggregate(match)
     end
     if #fights == 0 then return nil end
 
-    local agg = { me = {}, targets = {}, sources = {}, heals = {}, group = {}, activeSec = 0, fights = #fights }
+    local agg = { me = {}, targets = {}, sources = {}, heals = {}, activeSec = 0, fights = #fights }
     local abilities, healAbilities = {}, {}
     for _, e in ipairs(fights) do
         agg.activeSec = agg.activeSec + Num(e.activeSec)
@@ -294,11 +279,6 @@ function LFI:BuildAggregate(match)
         end
         for n, v in pairs(e.sources) do agg.sources[n] = Num(agg.sources[n]) + v end
         for n, v in pairs(e.heals) do agg.heals[n] = Num(agg.heals[n]) + v end
-        for n, g in pairs(e.group) do
-            local x = agg.group[n] or { damage = 0, healing = 0, hits = 0, crits = 0, shieldAbsorbed = 0 }
-            for k, v in pairs(g) do x[k] = Num(x[k]) + v end
-            agg.group[n] = x
-        end
         MergeAbilities(abilities, e.abilities)
         MergeAbilities(healAbilities, e.healAbilities)
     end
@@ -323,18 +303,10 @@ function LFI:BuildAggregate(match)
     return agg
 end
 
--- Stats for one scoreboard row (nil when LibFights saw nothing for them).
+-- LibFights only logs your own fights, so this is your row only.
 function LFI:GetPlayerStats(agg, p)
-    if not agg then return nil end
-    if p.isLocal then return agg.me end
-    local g = agg.group[p.characterName]
-    if g then
-        return {
-            damageDone = g.damage, healingDone = g.healing, damageShielded = g.shieldAbsorbed,
-            critRate = g.hits > 0 and g.crits / g.hits * 100 or nil, source = "LibFights (group)",
-        }
-    end
-    return nil
+    if not agg or not p.isLocal then return nil end
+    return agg.me
 end
 
 function LFI:GetVsStats(agg, characterName)
@@ -353,6 +325,5 @@ function LFI:StatusText()
     if not SBR.sv.useLibFights then return "LibFights disabled in settings" end
     local parts = { self:IsLogging() and "logging" or "idle" }
     if self.weStarted then parts[#parts + 1] = "started by us" end
-    if SBR.sv.lfGroupMode then parts[#parts + 1] = "group mode" end
     return "LibFights " .. (Lib().version or "") .. " (" .. table.concat(parts, ", ") .. ")"
 end

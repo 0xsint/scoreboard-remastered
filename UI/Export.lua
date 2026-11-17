@@ -69,7 +69,7 @@ end
 local FIGHT_KEYS = {
     "damageDone", "healingDone", "damageTaken", "healingTaken", "dps", "hps", "killingBlows", "deaths",
     "interrupts", "interrupted", "ccApplied", "ccTaken", "damageShielded", "damageBlocked", "mitigated", "overheal",
-    "critRate", "maxHit", "lightAttacks", "heavyAttacks", "skillCasts", "ultimates", "weaves", "fights", "activeTime",
+    "critRate", "healCritRate", "maxHit", "lightAttacks", "heavyAttacks", "skillCasts", "ultimates", "weaves", "fights", "activeTime",
 }
 local VS_KEYS = { "damageFromYou", "damageToYou", "healedByYou", "healedYou", "killedByYou", "killedYou" }
 
@@ -150,6 +150,10 @@ function EX:BuildKillFeed(match)
             SBR.FormatDuration(k.t), k.killer ~= "" and k.killer or "?", teamColor(k.killerTeam),
             k.victim ~= "" and k.victim or "?", teamColor(k.victimTeam),
             k.ability and k.ability ~= "" and (" with " .. k.ability) or "")
+        for _, h in ipairs(k.recap or {}) do
+            lines[#lines + 1] = string.format("      %s%s %s from %s", SBR.FormatNumber(h.hit), h.crit and "*" or "",
+                h.ability ~= "" and h.ability or "?", h.source ~= "" and h.source or "?")
+        end
     end
     if #(match.myMedals or {}) > 0 then
         lines[#lines + 1] = ""

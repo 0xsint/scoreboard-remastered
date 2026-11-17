@@ -10,9 +10,8 @@ local DEFAULTS = {
     showFightColumns = true,
     showVsColumns = true,
     useLibFights = true,   -- use LibFights when installed
-    lfGroupMode = true,    -- LibFights group mode: teammates' damage/healing
     lfSaveFights = false,  -- let LibFights also save battleground fights to its own SavedVariables
-    trackCombat = true,    -- built-in combat-log fallback when LibFights is missing
+    trackCombat = true,    -- combat ledger: fight stats for every player on the scoreboard
     chatSummary = true,
     maxHistory = 50,
     debug = false,
@@ -76,8 +75,14 @@ local function ListHistory()
 end
 
 local function Status()
-    SBR.Print("fight data: %s; built-in tracker %s", SBR.LibFights:StatusText(),
+    SBR.Print("fight data: %s; combat ledger %s", SBR.LibFights:StatusText(),
         SBR.FightTracker.active and "running" or (SBR.sv.trackCombat and "standby" or "off"))
+    local ledger = SBR.FightTracker.ledger
+    if ledger then
+        local n = 0
+        for _ in pairs(ledger.units) do n = n + 1 end
+        SBR.Print("combat ledger: %d players seen this match", n)
+    end
     local types = {}
     for _, st in ipairs(SBR.Battleground.scoreTypes or {}) do types[#types + 1] = st.key .. "=" .. st.id end
     SBR.Print("score types: %s", table.concat(types, ", "))

@@ -1,67 +1,109 @@
--- Built-in fight tracker: reads EVENT_COMBAT_EVENT while in a battleground.
--- The client only reports combat events the local player (or their pet) is part
--- of, so this gives full stats for you and "you vs them" stats for everyone you
--- fought. LibFights data, when present, takes priority over this.
+-- Per-player combat ledger for the whole match.
+--
+-- Listens to EVENT_COMBAT_EVENT without filters while in a battleground and
+-- credits every event the client sends to the players on both ends of it.
+-- The client sends events where the source or target is you, your pet or a
+-- member of your group, so:
+--   you            everything (LibFights' summary is used for your row when present)
+--   teammates      their damage/healing out, damage/healing taken, crits, CC,
+--                  interrupts, max hit, top abilities (as long as they are in your group)
+--   enemies        damage/CC they did to your team, damage/CC they took from your team
+--                  (their healing and fights with a third team are not visible)
+-- Results are categorised with LibFights.Const when it is installed, so both agree
+-- on what counts as damage, healing, CC and so on.
+--
+-- The ledger lives in match.ledger (SavedVariables), so /reloadui mid-match keeps it.
 local SBR = ScoreboardRemastered
-local FT = { name = "Built-in", active = false }
+local FT = { name = "Combat log", active = false }
 SBR.FightTracker = FT
 
-local DAMAGE = SBR.ConstSet({
-    "ACTION_RESULT_DAMAGE", "ACTION_RESULT_CRITICAL_DAMAGE", "ACTION_RESULT_DOT_TICK",
-    "ACTION_RESULT_DOT_TICK_CRITICAL", "ACTION_RESULT_BLOCKED_DAMAGE", "ACTION_RESULT_PRECISE_DAMAGE",
-    "ACTION_RESULT_WRECKING_DAMAGE", "ACTION_RESULT_FALL_DAMAGE",
-})
-local HEAL = SBR.ConstSet({
-    "ACTION_RESULT_HEAL", "ACTION_RESULT_CRITICAL_HEAL", "ACTION_RESULT_HOT_TICK", "ACTION_RESULT_HOT_TICK_CRITICAL",
-})
-local CRIT = SBR.ConstSet({
-    "ACTION_RESULT_CRITICAL_DAMAGE", "ACTION_RESULT_DOT_TICK_CRITICAL", "ACTION_RESULT_CRITICAL_HEAL",
-    "ACTION_RESULT_HOT_TICK_CRITICAL",
-})
-local CC = SBR.ConstSet({
-    "ACTION_RESULT_STUNNED", "ACTION_RESULT_KNOCKBACK", "ACTION_RESULT_FEARED", "ACTION_RESULT_ROOTED",
-    "ACTION_RESULT_LEVITATED", "ACTION_RESULT_DISORIENTED", "ACTION_RESULT_SILENCED", "ACTION_RESULT_OFFBALANCE",
-})
-local DIED = SBR.ConstSet({ "ACTION_RESULT_DIED", "ACTION_RESULT_DIED_XP" })
-local R_KB = _G.ACTION_RESULT_KILLING_BLOW
-local R_INTERRUPT = _G.ACTION_RESULT_INTERRUPT
-local R_SHIELDED = _G.ACTION_RESULT_DAMAGE_SHIELDED
-local R_BLOCKED = _G.ACTION_RESULT_BLOCKED_DAMAGE
+local ACTIVE_GAP_MS = 5000 -- gaps longer than this don't count as active time
+local RECENT_HITS = 6      -- hits kept per player for death recaps
+local TOP_N = 5
 
-local function NewStats()
+-- Category lookup: LibFights' table when available, else our own.
+local CATEGORY
+local CRIT
+local R_KB, R_INTERRUPT, R_BLOCKED
+
+local function BuildCategories()
+    local LFC = _G.LibFights and _G.LibFights.Const
+    if type(LFC) == "table" and type(LFC.CATEGORY) == "table" then
+        CATEGORY, CRIT = LFC.CATEGORY, LFC.CRIT_RESULTS or {}
+    else
+        CATEGORY = {}
+        local function assign(cat, names)
+            for _, n in ipairs(names) do
+                local v = _G["ACTION_RESULT_" .. n]
+                if v ~= nil and CATEGORY[v] == nil then CATEGORY[v] = cat end
+            end
+        end
+        assign("shield", { "DAMAGE_SHIELDED" })
+        assign("damage", { "DAMAGE", "CRITICAL_DAMAGE", "DOT_TICK", "DOT_TICK_CRITICAL", "BLOCKED_DAMAGE",
+            "FALL_DAMAGE", "PRECISE_DAMAGE", "WRECKING_DAMAGE" })
+        assign("heal", { "HEAL", "CRITICAL_HEAL", "HOT_TICK", "HOT_TICK_CRITICAL" })
+        assign("cc", { "INTERRUPT", "STUNNED", "KNOCKBACK", "FEARED", "SNARED", "ROOTED", "SILENCED", "STAGGERED",
+            "LEVITATED", "DISORIENTED", "OFFBALANCE", "CHARMED" })
+        assign("death", { "DIED", "DIED_XP", "KILLING_BLOW" })
+        CRIT = SBR.ConstSet({ "ACTION_RESULT_CRITICAL_DAMAGE", "ACTION_RESULT_DOT_TICK_CRITICAL",
+            "ACTION_RESULT_CRITICAL_HEAL", "ACTION_RESULT_HOT_TICK_CRITICAL" })
+    end
+    R_KB = _G.ACTION_RESULT_KILLING_BLOW
+    R_INTERRUPT = _G.ACTION_RESULT_INTERRUPT
+    R_BLOCKED = _G.ACTION_RESULT_BLOCKED_DAMAGE
+end
+
+local function NewUnit()
     return {
         damageDone = 0, damageTaken = 0, healingDone = 0, healingTaken = 0,
         damageShielded = 0, damageBlocked = 0,
-        hits = 0, crits = 0, killingBlows = 0, deaths = 0,
+        hits = 0, crits = 0, healHits = 0, healCrits = 0,
+        maxHit = 0, killingBlows = 0, deaths = 0,
         interrupts = 0, interrupted = 0, ccApplied = 0, ccTaken = 0,
-        topAbilities = {},
+        activeMs = 0,
+        abilities = {}, heals = {}, recent = {},
     }
 end
 
 local function NewVs()
-    return { damageToYou = 0, damageFromYou = 0, healedByYou = 0, healedYou = 0, killedYou = 0, killedByYou = 0 }
+    return { damageToYou = 0, damageFromYou = 0, healedByYou = 0, healedYou = 0 }
 end
 
-function FT:Reset()
-    self.me = NewStats()
-    self.vs = {}
+-- Attach to the match's ledger (new, or restored after /reloadui).
+function FT:Bind(match)
+    match.ledger = match.ledger or { units = {}, vs = {} }
+    self.ledger = match.ledger
     self.unitNames = {}
-    self.inCombatSince = nil
-    self.combatMs = 0
-    self.startedMs = GetGameTimeMilliseconds()
+    self.lastActive = {}
+    self.myName = match.character
+    BuildCategories()
+end
+
+function FT:Unit(name)
+    local units = self.ledger.units
+    local u = units[name]
+    if not u then
+        u = NewUnit()
+        units[name] = u
+    end
+    return u
 end
 
 function FT:Vs(name)
-    if name == "" then return nil end
-    local v = self.vs[name]
+    if name == "" or name == self.myName then return nil end
+    local vs = self.ledger.vs
+    local v = vs[name]
     if not v then
         v = NewVs()
-        self.vs[name] = v
+        vs[name] = v
     end
     return v
 end
 
-function FT:ResolveName(name, unitId)
+function FT:ResolveName(name, unitId, unitType)
+    if unitType == COMBAT_UNIT_TYPE_PLAYER or unitType == COMBAT_UNIT_TYPE_PLAYER_PET then
+        return self.myName -- your pet's damage is yours
+    end
     name = SBR.CleanName(name)
     if name ~= "" then
         if unitId and unitId ~= 0 then self.unitNames[unitId] = name end
@@ -70,125 +112,151 @@ function FT:ResolveName(name, unitId)
     return unitId and self.unitNames[unitId] or ""
 end
 
-local function IsMe(unitType)
-    return unitType == COMBAT_UNIT_TYPE_PLAYER or unitType == COMBAT_UNIT_TYPE_PLAYER_PET
+function FT:MarkActive(u, name, now)
+    local last = self.lastActive[name]
+    if last and now - last <= ACTIVE_GAP_MS then u.activeMs = u.activeMs + (now - last) end
+    self.lastActive[name] = now
+end
+
+local function PushRecent(u, entry)
+    local r = u.recent
+    r[#r + 1] = entry
+    if #r > RECENT_HITS then table.remove(r, 1) end
 end
 
 function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, targetName, targetType, hitValue, sourceUnitId, targetUnitId, abilityId)
-    if isError or not self.me then return end
-    local srcMe = IsMe(sourceType)
-    local tgtMe = targetType == COMBAT_UNIT_TYPE_PLAYER
-    if not srcMe and not tgtMe then return end
+    if isError or not self.ledger then return end
+    local cat = CATEGORY[result]
+    if not cat then return end
 
-    local me = self.me
-    local src = self:ResolveName(sourceName, sourceUnitId)
-    local tgt = self:ResolveName(targetName, targetUnitId)
-    hitValue = hitValue or 0
-
-    if DAMAGE[result] and hitValue > 0 then
-        if srcMe and not tgtMe then
-            me.damageDone = me.damageDone + hitValue
-            me.hits = me.hits + 1
-            if CRIT[result] then me.crits = me.crits + 1 end
-            local v = self:Vs(tgt)
-            if v then v.damageFromYou = v.damageFromYou + hitValue end
-            local an = SBR.CleanName(abilityName)
-            if an ~= "" then me.topAbilities[an] = (me.topAbilities[an] or 0) + hitValue end
-        elseif tgtMe and not srcMe then
-            me.damageTaken = me.damageTaken + hitValue
-            local v = self:Vs(src)
-            if v then v.damageToYou = v.damageToYou + hitValue end
-        end
-        if tgtMe and result == R_BLOCKED then me.damageBlocked = me.damageBlocked + hitValue end
-    elseif HEAL[result] and hitValue > 0 then
-        if srcMe then
-            me.healingDone = me.healingDone + hitValue
-            if not tgtMe then
-                local v = self:Vs(tgt)
-                if v then v.healedByYou = v.healedByYou + hitValue end
-            end
-        end
-        if tgtMe then
-            me.healingTaken = me.healingTaken + hitValue
-            if not srcMe then
-                local v = self:Vs(src)
-                if v then v.healedYou = v.healedYou + hitValue end
-            end
-        end
-    elseif result == R_SHIELDED and tgtMe then
-        me.damageShielded = me.damageShielded + hitValue
-    elseif result == R_KB then
-        if srcMe and not tgtMe then
-            me.killingBlows = me.killingBlows + 1
-            local v = self:Vs(tgt)
-            if v then v.killedByYou = v.killedByYou + 1 end
-        elseif tgtMe and not srcMe then
-            local v = self:Vs(src)
-            if v then v.killedYou = v.killedYou + 1 end
-        end
-    elseif DIED[result] and tgtMe then
-        me.deaths = me.deaths + 1
-    elseif result == R_INTERRUPT then
-        if srcMe and not tgtMe then me.interrupts = me.interrupts + 1 end
-        if tgtMe and not srcMe then me.interrupted = me.interrupted + 1 end
-    elseif CC[result] then
-        if srcMe and not tgtMe then me.ccApplied = me.ccApplied + 1 end
-        if tgtMe and not srcMe then me.ccTaken = me.ccTaken + 1 end
-    end
-end
-
-function FT:OnCombatState(inCombat)
+    local srcName = self:ResolveName(sourceName, sourceUnitId, sourceType)
+    local tgtName = self:ResolveName(targetName, targetUnitId, targetType)
+    local selfTarget = srcName ~= "" and srcName == tgtName
+    local src = srcName ~= "" and self:Unit(srcName) or nil
+    local tgt = tgtName ~= "" and self:Unit(tgtName) or nil
+    local hit = hitValue or 0
     local now = GetGameTimeMilliseconds()
-    if inCombat then
-        self.inCombatSince = self.inCombatSince or now
-    elseif self.inCombatSince then
-        self.combatMs = self.combatMs + (now - self.inCombatSince)
-        self.inCombatSince = nil
+    local me = self.myName
+
+    if cat == "damage" then
+        if hit <= 0 then return end
+        local ability = SBR.CleanName(abilityName)
+        if src and not selfTarget then
+            src.damageDone = src.damageDone + hit
+            src.hits = src.hits + 1
+            if CRIT[result] then src.crits = src.crits + 1 end
+            if hit > src.maxHit then src.maxHit, src.maxHitAbility = hit, ability end
+            if ability ~= "" then src.abilities[ability] = (src.abilities[ability] or 0) + hit end
+            self:MarkActive(src, srcName, now)
+        end
+        if tgt then
+            tgt.damageTaken = tgt.damageTaken + hit
+            if result == R_BLOCKED then tgt.damageBlocked = tgt.damageBlocked + hit end
+            PushRecent(tgt, { t = now, ability = ability, abilityId = abilityId, hit = hit, source = srcName,
+                crit = CRIT[result] and true or nil })
+        end
+        if srcName == me and tgtName ~= me then
+            local v = self:Vs(tgtName)
+            if v then v.damageFromYou = v.damageFromYou + hit end
+        elseif tgtName == me and srcName ~= me then
+            local v = self:Vs(srcName)
+            if v then v.damageToYou = v.damageToYou + hit end
+        end
+    elseif cat == "heal" then
+        if hit <= 0 then return end
+        if src then
+            local ability = SBR.CleanName(abilityName)
+            src.healingDone = src.healingDone + hit
+            src.healHits = src.healHits + 1
+            if CRIT[result] then src.healCrits = src.healCrits + 1 end
+            if ability ~= "" then src.heals[ability] = (src.heals[ability] or 0) + hit end
+            self:MarkActive(src, srcName, now)
+        end
+        if tgt then tgt.healingTaken = tgt.healingTaken + hit end
+        if srcName == me and tgtName ~= me then
+            local v = self:Vs(tgtName)
+            if v then v.healedByYou = v.healedByYou + hit end
+        elseif tgtName == me and srcName ~= me then
+            local v = self:Vs(srcName)
+            if v then v.healedYou = v.healedYou + hit end
+        end
+    elseif cat == "shield" then
+        if tgt then tgt.damageShielded = tgt.damageShielded + hit end
+    elseif cat == "cc" then
+        if selfTarget then return end
+        if result == R_INTERRUPT then
+            if src then src.interrupts = src.interrupts + 1 end
+            if tgt then tgt.interrupted = tgt.interrupted + 1 end
+        else
+            if src then src.ccApplied = src.ccApplied + 1 end
+            if tgt then tgt.ccTaken = tgt.ccTaken + 1 end
+        end
+    elseif cat == "death" then
+        if result == R_KB then
+            if src and not selfTarget then src.killingBlows = src.killingBlows + 1 end
+        elseif tgt then
+            tgt.deaths = tgt.deaths + 1
+        end
     end
 end
 
-function FT:GetCombatSeconds()
-    local ms = self.combatMs or 0
-    if self.inCombatSince then ms = ms + (GetGameTimeMilliseconds() - self.inCombatSince) end
-    return ms / 1000
-end
-
-local function TopAbilities(map, n)
+local function Top(map, n)
     local list = {}
-    for name, dmg in pairs(map) do list[#list + 1] = { name = name, damage = dmg } end
+    for name, total in pairs(map or {}) do list[#list + 1] = { name = name, damage = total } end
     table.sort(list, function(a, b) return a.damage > b.damage end)
     for i = #list, n + 1, -1 do list[i] = nil end
     return list
 end
 
--- Provider interface (same shape LibFights data is normalized to).
-function FT:GetPlayerStats(characterName, displayName, isLocal)
-    if not self.me then return nil end
-    if isLocal then
-        local me = self.me
-        local secs = self:GetCombatSeconds()
-        local s = SBR.ShallowCopy(me)
-        s.source = FT.name
-        s.topAbilities = TopAbilities(me.topAbilities, 5)
-        s.activeTime = secs
-        s.dps = secs > 0 and me.damageDone / secs or 0
-        s.hps = secs > 0 and me.healingDone / secs or 0
-        s.critRate = me.hits > 0 and (me.crits / me.hits) * 100 or nil
-        return s
+-- Stats for one player, in the same shape as the LibFights summary.
+-- isEnemy: their healing isn't visible to the client, so it is left out instead of shown as 0.
+function FT:GetPlayerStats(characterName, isEnemy)
+    local u = self.ledger and self.ledger.units[characterName]
+    if not u then return nil end
+    local secs = u.activeMs / 1000
+    local s = {}
+    for k, v in pairs(u) do
+        if type(v) == "number" or type(v) == "string" then s[k] = v end
     end
-    return nil
+    s.activeMs = nil
+    s.activeTime = secs
+    if secs > 0 then
+        s.dps = u.damageDone / secs
+        s.hps = u.healingDone / secs
+    end
+    if u.hits > 0 then s.critRate = u.crits / u.hits * 100 end
+    if u.healHits > 0 then s.healCritRate = u.healCrits / u.healHits * 100 end
+    if u.maxHit == 0 then s.maxHit = nil end
+    if isEnemy and u.healingDone == 0 then s.healingDone, s.hps = nil, nil end
+    s.topAbilities = Top(u.abilities, TOP_N)
+    s.topHeals = Top(u.heals, 3)
+    s.source = isEnemy and (FT.name .. ", vs your team") or FT.name
+    return s
 end
 
 function FT:GetVsStats(characterName)
-    if not self.vs then return nil end
-    local v = self.vs[characterName]
+    local v = self.ledger and self.ledger.vs[characterName]
     return v and SBR.ShallowCopy(v) or nil
 end
 
-function FT:Start()
-    if self.active then return end
-    self:Reset()
+-- Last hits a player took, oldest first (death recaps in the kill feed).
+function FT:GetRecentHits(characterName, withinMs)
+    local u = self.ledger and self.ledger.units[characterName]
+    if not u then return nil end
+    local now = GetGameTimeMilliseconds()
+    local out = {}
+    for _, h in ipairs(u.recent) do
+        if not withinMs or now - h.t <= withinMs then
+            out[#out + 1] = { ability = h.ability, abilityId = h.abilityId, hit = h.hit, source = h.source, crit = h.crit }
+        end
+    end
+    return #out > 0 and out or nil
+end
+
+function FT:Start(match)
     if not SBR.sv.trackCombat then return end
+    self:Bind(match)
+    if self.active then return end
     self.active = true
     local ns = SBR.name .. "_Combat"
     EVENT_MANAGER:RegisterForEvent(ns, EVENT_COMBAT_EVENT,
@@ -196,15 +264,12 @@ function FT:Start()
             FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, targetName, targetType, hitValue, sourceUnitId, targetUnitId, abilityId)
         end)
     EVENT_MANAGER:AddFilterForEvent(ns, EVENT_COMBAT_EVENT, REGISTER_FILTER_IS_ERROR, false)
-    EVENT_MANAGER:RegisterForEvent(ns, EVENT_PLAYER_COMBAT_STATE, function(_, inCombat) FT:OnCombatState(inCombat) end)
-    if SBR.API("IsUnitInCombat", "player") then self:OnCombatState(true) end
 end
 
 function FT:Stop()
-    if not self.active then return end
-    if self.me then self:OnCombatState(false) end
-    self.active = false
-    local ns = SBR.name .. "_Combat"
-    EVENT_MANAGER:UnregisterForEvent(ns, EVENT_COMBAT_EVENT)
-    EVENT_MANAGER:UnregisterForEvent(ns, EVENT_PLAYER_COMBAT_STATE)
+    if self.active then
+        self.active = false
+        EVENT_MANAGER:UnregisterForEvent(SBR.name .. "_Combat", EVENT_COMBAT_EVENT)
+    end
+    self.ledger = nil
 end

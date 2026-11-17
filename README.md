@@ -27,20 +27,35 @@ and every 5 seconds:
 - Players who left mid-match are kept and marked *(left)*
 - The result (victory, defeat, tie or left early) and the match duration
 
-Fight data from [LibFights](https://github.com/0xsint/LibFights), summed across every fight in the match:
+Fight data for **every player on the scoreboard**:
 
-- **You:** damage, healing, DPS/HPS (over active time), damage/healing taken, shields
-  absorbed, mitigation, blocked damage, overheal, killing blows, deaths, interrupts done and
-  received, CC done and received, crit rate, max hit and its ability, light/heavy attacks,
-  skills, ultimates, weaves, top damage and heal abilities with icons, and the number of fights
-- **Teammates** (LibFights group mode): damage, healing, crit rate, shields absorbed
-- **Everyone:** damage you dealt them, damage they dealt you, healing you gave them, and
-  kills each way (from the kill feed)
-- **Your deaths** with LibFights' death recap (the last hits before each death)
-- **A fight list** for the match: title, duration, DPS, damage, healing, KBs and deaths
+- **You:** [LibFights](https://github.com/0xsint/LibFights), summed across every fight in the
+  match. That covers damage, healing, DPS/HPS (over active time), damage/healing taken, shields
+  absorbed, mitigation, blocked damage, overheal, killing blows, deaths, interrupts and CC done
+  and received, crit rate, max hit and its ability, light/heavy attacks, skills, ultimates,
+  weaves, top damage and heal abilities with icons, and the number of fights.
+- **Teammates and enemies:** a per-player combat ledger that records every combat event the
+  client sends during the match. It gives damage done and taken, healing done and taken,
+  DPS/HPS over each player's own active time, crit and heal-crit rate, max hit and its ability,
+  killing blows, interrupts, CC applied and taken, shields absorbed, damage blocked, and top
+  damage and heal abilities. It uses LibFights' own result categories, so both sources agree
+  on what counts as damage, healing or CC.
+- **You vs each player:** damage each way, healing each way, and kills each way.
+- **Death recaps for every kill** in the kill feed: the last hits the victim took before dying.
+  Your own deaths also get LibFights' full recap.
+- **A fight list** for the match (LibFights): title, duration, DPS, damage, healing, KBs and deaths.
 
-Without LibFights, a built-in combat-log tracker gives a smaller version of the "you" and
-"everyone" data.
+**What the client can see.** ESO only sends combat events where the source or target is
+you, your pet or a member of your group:
+
+| Player | Coverage |
+|---|---|
+| You | complete |
+| Teammates in your group | complete for everything they do and everything done to them |
+| Enemies | everything they did to your team and everything your team did to them. Their healing, and fights with a third team in 3-team modes, aren't visible. Their healing shows "-", not 0 |
+
+In 2-team modes, an enemy's damage done is all their damage. The native scoreboard's
+Damage/Healing columns stay authoritative for everyone.
 
 Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 (`history`, 50 by default). A match still in progress (`current`) survives `/reloadui`.
@@ -71,22 +86,24 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 Nothing needs configuring. When a battleground starts:
 
 1. If LibFights isn't already logging, Scoreboard Remastered calls
-   `Start_Logging({ groupMode = true, rawEvents = false, saveFights = false })`.
+   `Start_Logging({ rawEvents = false, saveFights = false })`.
    If another add-on or you already started logging, it shares that session and
    never stops it.
 2. Every `FIGHT_ENDED` during the match is stored. Each snapshot also reads
    `LibFights.GetCurrentFight()`, so the panel stays live mid-fight.
-3. Each player's numbers are built from `f:GetSummary()`, `f:GetTargets()`,
-   `f:GetSources()`, `f.healTargets`, `f:GetGroup()` and
-   `f:GetAbilityBreakdown()`. Your death recaps come from the `DEATH` callback.
+3. Your row is built from `f:GetSummary()` and `f:GetAbilityBreakdown()`.
+   `f:GetTargets()`, `f:GetSources()` and `f.healTargets` are a fallback for the
+   you-vs-them columns if the ledger is turned off. Your death recaps come from
+   the `DEATH` callback.
 4. When the match ends, it calls `Stop_Logging()`, but only if it started the
    logging. That closes the running fight, so the last fight is counted too.
    Per-fight breakdowns are then reduced to a compact fight list, which keeps
    SavedVariables small.
 
-Settings: *Use LibFights*, *Group mode* (teammates' damage/healing; costs more
-CPU in 8v8), and *Also save fights in LibFights' SavedVariables* (off by default,
-so battlegrounds don't fill your LibFights saved fights).
+Settings: *Use LibFights*, and *Also save fights in LibFights' SavedVariables* (off by
+default, so battlegrounds don't fill your LibFights saved fights). Other players' stats
+come from the combat ledger (*Fight stats for every player*), not from LibFights' group
+mode, so LibFights runs in its lighter player-only mode.
 
 LibFights drops fights shorter than its `minFightSeconds` (2s by default), so
 very short skirmishes don't count toward the fight stats. The native scoreboard
@@ -94,9 +111,10 @@ columns are unaffected.
 
 ## Notes
 
-- The ESO client only reports combat events that involve you (and your group in group
-  mode), so full fight stats for enemies aren't possible from any add-on. The native
-  scoreboard columns cover every player.
+- The combat ledger is saved with the in-progress match, so `/reloadui` mid-match keeps
+  it. It is dropped when the match ends, since each player's row already holds the totals.
+- Battleground teams are normally grouped. If a teammate isn't in your group, they only
+  get the stats from their interactions with you.
 - Every game API call is protected. If ZOS renames a function, that column goes
   empty and nothing errors. If the panel doesn't open with the scoreboard, run
   `/sbr hooks` and add the scene or fragment name to `UI/ScoreboardHook.lua`.

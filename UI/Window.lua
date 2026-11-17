@@ -66,6 +66,7 @@ local FIGHT_COLUMNS = {
     { key = "dps", label = "DPS", tip = "Damage per second in combat" },
     { key = "hps", label = "HPS", tip = "Healing per second in combat" },
     { key = "damageTaken", label = "Taken", tip = "Damage taken" },
+    { key = "healingTaken", label = "Healed", tip = "Healing received" },
     { key = "killingBlows", label = "KBs", tip = "Killing blows" },
     { key = "interrupts", label = "Intr", tip = "Interrupts" },
     { key = "ccApplied", label = "CC", tip = "Crowd control applied" },
@@ -77,7 +78,7 @@ local FIGHT_COLUMNS = {
 local VS_COLUMNS = {
     { key = "damageFromYou", label = "You>", tip = "Damage you dealt to this player" },
     { key = "damageToYou", label = ">You", tip = "Damage this player dealt to you" },
-    { key = "healedByYou", label = "Healed", tip = "Healing you gave this player" },
+    { key = "healedByYou", label = "You heal", tip = "Healing you gave this player" },
     { key = "killedByYou", label = "Killed", tip = "Times you killed this player (kill feed)" },
     { key = "killedYou", label = "By", tip = "Times this player killed you (kill feed)" },
 }
@@ -133,7 +134,7 @@ function UI:BuildColumns(match)
             if AnyValue(players, get) then
                 cols[#cols + 1] = {
                     key = "f:" .. key, label = fc.label, width = 56, numeric = true, value = get, fmt = fc.fmt,
-                    tip = fc.tip .. " (LibFights / combat log)", fight = true,
+                    tip = fc.tip .. "\nYou: LibFights. Teammates: combat log (group members).\nEnemies: combat log, only what they did to and took from your team.", fight = true,
                 }
             end
         end
@@ -447,6 +448,7 @@ function UI:PlayerTooltip(p)
         stat("CC applied", f.ccApplied)
         stat("CC taken", f.ccTaken)
         stat("Crit rate", f.critRate, function(v) return string.format("%.1f%%", v) end)
+        stat("Heal crit rate", f.healCritRate, function(v) return string.format("%.1f%%", v) end)
         if f.maxHit then add(string.format("  Max hit: %s%s", SBR.FormatNumber(f.maxHit), f.maxHitAbility and (" (" .. f.maxHitAbility .. ")") or "")) end
         stat("Mitigated", f.mitigated)
         stat("Overheal", f.overheal)
@@ -468,6 +470,9 @@ function UI:PlayerTooltip(p)
         end
         abilityList("Top damage", f.topAbilities)
         abilityList("Top heals", f.topHeals)
+        if f.source and f.source:find("vs your team", 1, true) then
+            add("  |c999999Enemy: only what they did to and took from your team.|r")
+        end
     end
     if p.vs then
         local v = p.vs
@@ -534,12 +539,14 @@ function UI:RefreshHeader(match)
     self.teamLabel:SetText(table.concat(teamTexts, "   "))
 
     local src
+    local ledgerOn = match.ledger ~= nil or (match.endedAt and SBR.sv.trackCombat)
     if match.lf then
         local n = match.lf.fightList and #match.lf.fightList or 0
         if match.lf.fights then for _ in pairs(match.lf.fights) do n = n + 1 end end
-        src = string.format("LibFights, %d fight%s", n, n == 1 and "" or "s")
-    elseif SBR.FightTracker.active or (match.endedAt and SBR.sv.trackCombat) then
-        src = "built-in combat log"
+        src = string.format("LibFights (you, %d fight%s)", n, n == 1 and "" or "s")
+        if ledgerOn then src = src .. " + combat log (everyone)" end
+    elseif ledgerOn then
+        src = "combat log (everyone)"
     end
     if not match.endedAt then src = SBR.LibFights:StatusText() .. (src and ("  |  " .. src) or "") end
     self.sourceLabel:SetText("Fight data: " .. (src or "none"))

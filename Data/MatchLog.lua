@@ -60,10 +60,29 @@ function ML:Begin(info)
     return match
 end
 
--- LibFights when available, otherwise the built-in combat-log tracker.
+-- LibFights for your own fights, plus the per-player combat ledger for everyone.
 function ML:StartTracking(match)
-    if not SBR.LibFights:Attach(match) then SBR.FightTracker:Start() end
+    SBR.LibFights:Attach(match)
+    SBR.FightTracker:Start(match)
     self:StartPeriodic()
+end
+
+-- Your row: LibFights' summary, with anything it lacks filled from the ledger.
+-- Everyone else: the ledger.
+local function PlayerFightStats(match, agg, p)
+    local FT = SBR.FightTracker
+    local ledger = FT.ledger and FT:GetPlayerStats(p.characterName, match.localTeam ~= nil and p.team ~= match.localTeam)
+    if not p.isLocal then return ledger end
+    local lf = SBR.LibFights:GetPlayerStats(agg, p)
+    if not lf then return ledger end
+    if ledger then
+        lf = SBR.ShallowCopy(lf)
+        for k, v in pairs(ledger) do
+            if lf[k] == nil then lf[k] = v end
+        end
+        lf.source = "LibFights"
+    end
+    return lf
 end
 
 -- Kills and deaths between you and each player, from the battleground kill feed.
@@ -128,16 +147,15 @@ function ML:Snapshot()
         p.left = nil
         for k in pairs(e.scores) do match.columnsSeen[k] = true end
 
-        local fight = SBR.LibFights:GetPlayerStats(agg, p)
-            or (SBR.FightTracker.active and SBR.FightTracker:GetPlayerStats(p.characterName, p.displayName, p.isLocal))
-        if fight or match.lf then
-            -- With LibFights, a live fight it later discards (shorter than its
-            -- minFightSeconds) must drop out again, so overwrite with nil too.
+        local fight = PlayerFightStats(match, agg, p)
+        if fight or match.lf or match.ledger then
+            -- Overwrite with nil too: a live LibFights fight it later discards
+            -- (shorter than its minFightSeconds) must drop out again.
             p.fight = fight and Sanitize(fight, 0) or nil
         end
         if not p.isLocal then
-            local vs = SBR.LibFights:GetVsStats(agg, p.characterName)
-                or (SBR.FightTracker.active and SBR.FightTracker:GetVsStats(p.characterName)) or nil
+            local vs = (SBR.FightTracker.ledger and SBR.FightTracker:GetVsStats(p.characterName))
+                or SBR.LibFights:GetVsStats(agg, p.characterName)
             local kv = killVs[p.characterName]
             if kv then
                 vs = vs or {}
@@ -213,6 +231,7 @@ function ML:Finalize(reason)
         self:Snapshot()
     end
     SBR.LibFights:Compact(match)
+    match.ledger = nil -- every player's row already holds their ledger stats
     self:StopPeriodic()
     SBR.FightTracker:Stop()
 
@@ -304,6 +323,10 @@ function ML:OnKill(...)
         abilityId = type(abilityId) == "number" and abilityId or nil,
     }
     if entry.abilityId then entry.ability = SBR.CleanName(SBR.API("GetAbilityName", entry.abilityId) or "") end
+    -- Death recap for any player whose last hits the client saw (you and your group's fights).
+    if SBR.FightTracker.ledger and entry.victim ~= "" then
+        entry.recap = SBR.FightTracker:GetRecentHits(entry.victim, 15000)
+    end
     table.insert(match.killFeed, entry)
     self:RequestSnapshot()
 end
