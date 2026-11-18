@@ -213,3 +213,4 @@ function EX:ShowKillFeed(match)
         self:Open(title, text)
     end
 end
+ScoreboardRemastered.Mark("UI/Export.lua")

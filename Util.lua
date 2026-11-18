@@ -6,6 +6,21 @@ SBR.name = "ScoreboardRemastered"
 SBR.displayName = "|c4FC3F7Scoreboard|r Remastered"
 SBR.version = "1.0.0"
 
+-- Load timing ("CPU budget reached" diagnostics). Marks are taken as each of our
+-- files finishes, at each setup step, and whenever any add-on finishes loading, so
+-- the report (chat after login, saved in sv.loadReports) shows where load time goes.
+local Now = GetGameTimeMilliseconds
+SBR.loadProfile = { start = Now(), marks = {}, addons = {} }
+function SBR.Mark(label)
+    local p = SBR.loadProfile
+    if p.done then return end
+    p.marks[#p.marks + 1] = { label, Now() }
+end
+EVENT_MANAGER:RegisterForEvent(SBR.name .. "_LoadTimeline", EVENT_ADD_ON_LOADED, function(_, name)
+    local p = SBR.loadProfile
+    if not p.done then p.addons[#p.addons + 1] = { name, Now() } end
+end)
+
 local function pack(...)
     return { n = select("#", ...), ... }
 end
@@ -264,3 +279,4 @@ function SBR.Realize(t)
     if SBR.IsLazy(t) then RealizeInto(t, getmetatable(t)) end
     return t
 end
+ScoreboardRemastered.Mark("Util.lua")

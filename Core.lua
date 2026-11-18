@@ -22,6 +22,7 @@ local DEFAULTS = {
     inventoryButton = true, -- "Battleground records" in the inventory
     inventoryKey = "right_stick", -- gamepad inventory button
     debug = false,
+    showLoadTiming = false, -- always print the load report (it prints by itself when slow)
     history = {},
 }
 
@@ -36,12 +37,22 @@ end
 
 local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
+        local M = SBR.Mark
         SBR.Hook:Install() -- catch anything created after addon load
         SBR.Replace:Install()
+        M("activated: scoreboard hooks")
         SBR.MatchLog:StartBackgroundCompaction()
         SBR.InventoryHook:Install()
         SBR.LibFights:Init()
+        M("activated: inventory, LibFights")
         SBR.MatchLog:OnPlayerActivated()
+        M("activated: match log")
+        SBR.FinishLoadProfile()
+        -- the settings panel is built a moment after login, not during the load
+        if not SBR.settingsCreated then
+            SBR.settingsCreated = true
+            zo_callLater(function() SBR.Settings:Create() end, 1500)
+        end
     end)
     On("EVENT_BATTLEGROUND_STATE_CHANGED", function(_, previousState, currentState)
         SBR.MatchLog:OnStateChanged(previousState, currentState)
@@ -63,6 +74,7 @@ local HELP = {
     "/sbr attach over|right|left|below|free",
     "/sbr clear - delete saved history",
     "/sbr status - LibFights state and score types",
+    "/sbr load - how long the last loads took (CPU budget)",
     "/sbr hooks - which native scoreboard parts were hooked",
     "/sbr debug - toggle debug output",
 }
@@ -111,6 +123,16 @@ local function Slash(args)
         W:Show(true)
     elseif cmd == "hide" then
         W:Hide(true)
+    elseif cmd == "load" then
+        local reports = SBR.sv.loadReports or {}
+        if #reports == 0 then SBR.Print("no load report yet") end
+        for _, r in ipairs(reports) do
+            SBR.Print("%s: our files %d ms, setup %d ms, after login %d ms; slowest step %s %d ms; slowest add-ons: %s",
+                SBR.FormatTimestamp and SBR.FormatTimestamp(r.at) or tostring(r.at), r.ourFilesMs or 0, r.setupMs or 0,
+                r.activatedMs or 0, tostring(r.slowest), r.slowestMs or 0, r.otherAddons ~= "" and r.otherAddons or "-")
+        end
+        local last = reports[#reports]
+        if last then SBR.Print("steps (ms): %s", last.steps) end
     elseif cmd == "export" then
         SBR.Export:Show(W:GetViewedMatch())
     elseif cmd == "kills" or cmd == "killfeed" then
@@ -164,18 +186,22 @@ local function OnAddOnLoaded(_, addonName)
         DEFAULTS.maxRecords = 150
         DEFAULTS.maxPlayers = 400
     end
+    local M = SBR.Mark
+    M("add-on loaded event")
     SBR.sv = ZO_SavedVars:NewAccountWide("ScoreboardRemasteredSV", 1, nil, DEFAULTS)
+    M("setup: saved variables")
     SBR.MatchLog:Init(SBR.sv)
     SBR.MatchDB:Init(SBR.sv)
+    M("setup: match log, database")
     SBR.Battleground:DiscoverScoreTypes()
     SBR.LibFights:Init()
     SBR.Hook:Install()
-    -- the windows are built the first time they open, not here: load time counts
-    -- against ESO's CPU budget
+    -- the windows and the settings panel are built later (first open / after
+    -- login), not here: load time counts against ESO's CPU budget
     SBR.Gamepad:Init()
     SBR.InventoryHook:Install()
-    SBR.Settings:Create()
     RegisterEvents()
+    M("setup: hooks, events")
 
     if SLASH_COMMANDS then -- not available on console
         SLASH_COMMANDS["/sbr"] = Slash
@@ -185,6 +211,59 @@ end
 
 EVENT_MANAGER:RegisterForEvent(SBR.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
 
+-- Load report: how long our files, our setup and each add-on's load took. Printed to
+-- chat once per load when it's slow (or always with the "Show load timing" setting),
+-- and the last 5 are kept in sv.loadReports.
+local SLOW_LOAD_MS = 100
+function SBR.FinishLoadProfile()
+    local p = SBR.loadProfile
+    if p.done then return end
+    p.done = true
+    EVENT_MANAGER:UnregisterForEvent(SBR.name .. "_LoadTimeline", EVENT_ADD_ON_LOADED)
+    local lines, last = {}, p.start
+    local ours, setup, activated = 0, 0, 0
+    local slowest, slowestMs = nil, -1
+    for _, m in ipairs(p.marks) do
+        local ms = m[2] - last
+        last = m[2]
+        if m[1]:find("^setup") then setup = setup + ms
+        elseif m[1]:find("^activated") then activated = activated + ms
+        elseif m[1] ~= "add-on loaded event" then ours = ours + ms end
+        if m[1] ~= "add-on loaded event" and ms > slowestMs then slowest, slowestMs = m[1], ms end
+        lines[#lines + 1] = string.format("%s %d", m[1], ms)
+    end
+    -- other add-ons: time between consecutive "add-on loaded" events (their saved
+    -- variables and setup, plus file loading for the first one)
+    local others, prev = {}, nil
+    for _, a in ipairs(p.addons) do
+        if prev then others[#others + 1] = { a[1], a[2] - prev } end
+        prev = a[2]
+    end
+    table.sort(others, function(a, b) return a[2] > b[2] end)
+    local top = {}
+    for i = 1, math.min(3, #others) do top[#top + 1] = string.format("%s %d ms", others[i][1], others[i][2]) end
+    local report = {
+        at = GetTimeStamp(),
+        ourFilesMs = ours, setupMs = setup, activatedMs = activated,
+        slowest = slowest, slowestMs = slowestMs,
+        sinceFirstFileMs = last - p.start,
+        steps = table.concat(lines, ", "),
+        otherAddons = table.concat(top, ", "),
+    }
+    local sv = SBR.sv
+    if sv then
+        sv.loadReports = sv.loadReports or {}
+        table.insert(sv.loadReports, report)
+        while #sv.loadReports > 5 do table.remove(sv.loadReports, 1) end
+    end
+    local total = ours + setup + activated
+    if total >= SLOW_LOAD_MS or (sv and sv.showLoadTiming) then
+        SBR.Print("load: our files %d ms, setup %d ms, after login %d ms (slowest: %s %d ms). Slowest loads overall: %s",
+            ours, setup, activated, tostring(slowest), slowestMs, #top > 0 and table.concat(top, ", ") or "-")
+    end
+end
+
 -- Public API for other addons
 function SBR.GetCurrentMatch() return SBR.MatchLog:GetCurrent() end
 function SBR.GetHistory() return SBR.MatchLog:GetHistory() end
+ScoreboardRemastered.Mark("Core.lua")

@@ -278,3 +278,4 @@ function BG:EntryKey(e)
     if e.displayName and e.displayName ~= "" then return e.displayName end
     return e.characterName
 end
+ScoreboardRemastered.Mark("Data/Battleground.lua")

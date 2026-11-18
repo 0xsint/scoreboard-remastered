@@ -6,8 +6,11 @@ local updates = {}
 EVENT_MANAGER = {
     RegisterForUpdate = function(_, ns, ms, f) updates[ns] = f end,
     UnregisterForUpdate = function(_, ns) updates[ns] = nil end,
+    RegisterForEvent = function() end, UnregisterForEvent = function() end,
 }
+EVENT_ADD_ON_LOADED = 1
 function GetTimeStamp() return 0 end
+function GetGameTimeMilliseconds() return 0 end
 function ZO_ClearNumericallyIndexedTable(t) for i = #t, 1, -1 do t[i] = nil end end
 dofile("Util.lua")
 dofile("Data/MatchLog.lua")

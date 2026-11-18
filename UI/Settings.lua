@@ -81,6 +81,9 @@ local function Options()
         { type = "button", name = "Clear history", dangerous = true, func = function() SBR.MatchLog:ClearHistory() end },
         { type = "button", name = "Clear match database", dangerous = true,
           func = function() ZO_ClearNumericallyIndexedTable(SBR.MatchDB:GetRecords()) end },
+        { type = "checkbox", name = "Show load timing",
+          tooltip = "Print how long loading took after every login and /reloadui (it prints by itself when loading is slow). Helps find what goes over the CPU budget.",
+          get = function() return sv.showLoadTiming end, set = function(v) sv.showLoadTiming = v end },
         { type = "checkbox", name = "Debug output",
           get = function() return sv.debug end, set = function(v) sv.debug = v end },
     }
@@ -158,3 +161,4 @@ function Settings:Create()
     end
     if LAM then SBR.SafeCall(CreateLAM, LAM) end
 end
+ScoreboardRemastered.Mark("UI/Settings.lua")

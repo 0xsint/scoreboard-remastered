@@ -1011,3 +1011,4 @@ function MB:OnHiding()
     SBR.Gamepad.StopDPadRepeat()
     KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybinds)
 end
+ScoreboardRemastered.Mark("UI/MatchBrowser.lua")

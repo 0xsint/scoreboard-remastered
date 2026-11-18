@@ -475,3 +475,4 @@ function DB:PlayerSummary(e)
             or (e.withMatches > 0 and "ally") or "foe",
     }
 end
+ScoreboardRemastered.Mark("Data/MatchDB.lua")

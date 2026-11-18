@@ -204,3 +204,4 @@ function R:BuildKeybinds()
         },
     }
 end
+ScoreboardRemastered.Mark("UI/Replace.lua")

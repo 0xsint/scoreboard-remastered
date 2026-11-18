@@ -490,3 +490,4 @@ function ML:ClearHistory()
     ZO_ClearNumericallyIndexedTable(self.sv.packedHistory)
     SBR.Window:OnDataChanged()
 end
+ScoreboardRemastered.Mark("Data/MatchLog.lua")

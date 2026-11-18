@@ -124,3 +124,4 @@ function Hook:Report()
     local a = self:GetAnchorControl()
     SBR.Print("anchor control: %s", a and a:GetName() or "none (native scoreboard not open)")
 end
+ScoreboardRemastered.Mark("UI/ScoreboardHook.lua")

@@ -408,6 +408,25 @@ In the simulation (8 matches), the saved data went from about 22,000 tables to a
 save. `SIM_AFTER=tools/test-reload.lua` (with the simulator) saves, reloads and
 compares every match, record and player.
 
+### Load report
+
+After every login and `/reloadui`, the add-on times its own load: each of its files,
+each setup step and the first steps after login. It also records when every add-on
+finishes loading. If its own part took 100 ms or more, it prints a line to chat, for
+example:
+
+```
+Scoreboard Remastered: load: our files 40 ms, setup 12 ms, after login 9 ms
+(slowest: UI/Window.lua 11 ms). Slowest loads overall: LibFights 310 ms, ...
+```
+
+"Slowest loads overall" is the time between one add-on's loaded event and the next.
+That's mostly that add-on's saved variables and setup, so it shows when another add-on
+is the one using the budget. The last 5 reports are kept in `sv.loadReports`. **Show
+load timing** in settings prints the report on every load, and `/sbr load` (PC) prints
+the saved ones. The settings panel is built 1.5 s after login, and the console list
+screens are set up the first time they open, so neither is part of the load.
+
 ### In battle
 
 The add-on keeps its work small enough for ESO's per-frame add-on budget (which consoles

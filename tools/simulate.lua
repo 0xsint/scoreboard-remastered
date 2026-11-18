@@ -687,6 +687,8 @@ if PROFILE then
 end
 fire(EVENT_ADD_ON_LOADED, "LibFights")
 fire(EVENT_ADD_ON_LOADED, "ScoreboardRemastered")
+-- SIM_BEFORE=<file>: run a script after the add-on loads, before the matches
+if os.getenv("SIM_BEFORE") then dofile(os.getenv("SIM_BEFORE")) end
 LibFights.RegisterCallback(LibFights.EVENTS.FIGHT_ENDED, function(f, reason)
     local s = f:GetSummary()
     logline("libfights", string.format("LibFights fight %d ended (%s): %s, %.0fs, %d damage, %d healing",

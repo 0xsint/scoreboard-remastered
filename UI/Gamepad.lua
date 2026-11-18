@@ -81,7 +81,9 @@ end
 GP.StopDPadRepeat = StopRepeat
 GP.StartDPadRepeat = StartRepeat
 
+-- ListScreen(): the list screen, created if needed; ShownListScreen(): only if it exists
 local function ListScreen() return SBR.Console and SBR.Console.scoreboard end
+local function ShownListScreen() return SBR.Console and SBR.Console:Peek("scoreboard") end
 
 function GP:Init()
     if self.initialized then return end
@@ -125,7 +127,7 @@ local function UseList() return SBR.sv.consoleLayout == "list" end
 
 function GP:IsShowing()
     if self.scene and self.scene:IsShowing() then return true end
-    local s = ListScreen()
+    local s = ShownListScreen()
     return s ~= nil and s:IsShowingScene()
 end
 
@@ -156,7 +158,7 @@ function GP:Close()
         SCENE_MANAGER:HideCurrentScene() -- pops back to whatever opened it
         return
     end
-    local s = ListScreen()
+    local s = ShownListScreen()
     if s then s:Close() end
 end
 
@@ -255,7 +257,7 @@ function GP:UpdateKeybinds()
         KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybinds)
         return
     end
-    local s = ListScreen()
+    local s = ShownListScreen()
     if s and s:IsShowingScene() then s:RefreshKeybinds() end
 end
 
@@ -281,3 +283,4 @@ function GP:RemoveOpenKeybind()
     end
     self.openKeybindAdded = false
 end
+ScoreboardRemastered.Mark("UI/Gamepad.lua")

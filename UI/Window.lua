@@ -1309,7 +1309,8 @@ function UI:Refresh()
 end
 
 function UI:OnDataChanged()
-    if SBR.Console and SBR.Console.scoreboard then SBR.Console.scoreboard:OnDataChanged() end
+    local list = SBR.Console and SBR.Console:Peek("scoreboard")
+    if list then list:OnDataChanged() end
     if self.viewIndex == nil and self:IsShown() then self:RequestRefresh() end
 end
 
@@ -1410,3 +1411,4 @@ function UI:OnNativeHidden()
     self:Hide(false)
     self:ApplyPosition()
 end
+ScoreboardRemastered.Mark("UI/Window.lua")
