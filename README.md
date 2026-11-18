@@ -274,6 +274,14 @@ control template, texture path and scene name it uses. Fixed as a result:
   "attach right" was off screen. The default is now "over", and the side placements
   measure against the visible board.
 
+None of the game functions the add-on calls are **private** (ZeniMax-only, like `IsKeyDown`)
+or **protected** (blocked in combat). `tools/check-api.py` checks this against
+`ESOUIDocumentation.txt` and fails if one is added:
+
+```sh
+python3 tools/check-api.py <path-to>/esoui/ESOUIDocumentation.txt
+```
+
 ### Regenerating the simulation and screenshots
 
 ```sh
