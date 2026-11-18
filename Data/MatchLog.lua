@@ -236,6 +236,7 @@ function ML:ApplyInfo(match, info)
     match.teamSize = info.teamSize or match.teamSize
     match.numTeams = info.numTeams or match.numTeams
     match.numRounds = info.numRounds or match.numRounds
+    match.limitedLives = info.limitedLives or match.limitedLives
     match.state = info.state
     match.stateName = info.stateName
     match.localTeam = info.localTeam or match.localTeam
@@ -275,6 +276,7 @@ function ML:Snapshot()
         p.scores = e.scores
         p.medals = e.medals
         p.medalCount = e.medalCount
+        p.lives = e.lives
         p.left = nil
         for k in pairs(e.scores) do match.columnsSeen[k] = true end
 

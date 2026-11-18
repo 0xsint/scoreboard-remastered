@@ -1,7 +1,7 @@
 ## Title: |c4FC3F7Scoreboard|r Remastered
 ## Author: Scoreboard Remastered contributors
-## Version: 1.9.0
-## AddOnVersion: 190
+## Version: 1.9.1
+## AddOnVersion: 191
 ## APIVersion: 101051
 ## Description: Remastered battleground scoreboard. Logs every stat the native scoreboard shows (all score types, medals, classes, teams, kill feed) plus fight data from LibFights, and attaches itself to the native battleground scoreboard.
 ## SavedVariables: ScoreboardRemasteredSV

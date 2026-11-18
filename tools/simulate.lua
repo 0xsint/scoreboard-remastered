@@ -575,12 +575,51 @@ local function extraScore(p, key)
     if key:find("FLAG") then return h % 4 end
     return math.floor(base * ((h % 40) / 100))
 end
-function GetScoreboardEntryScoreByType(i, t)
-    local key = ST[t]
-    if not key then return 0 end
+local function totalScore(i, key)
     local v = P[i].sc[key]
     if v == nil then v = extraScore(P[i], key) end
     return v
+end
+-- SIM_ELIMINATION=1: a 3-round mode with limited lives, like Elimination. Scores
+-- are per round; GetBattlegroundCumulativeScoreForScoreboardEntryByType has the
+-- whole match. Read without a round index, the client reports round 1 (frozen once
+-- round 2 starts): the bug this mode reproduces.
+local ELIM = os.getenv("SIM_ELIMINATION") ~= nil
+local ROUND_MS = 160000
+local function currentRound()
+    if not ELIM or not CUR.startMs then return 1 end
+    return math.min(3, 1 + math.floor((simMs - CUR.startMs) / ROUND_MS))
+end
+-- totals at the start of each round, recorded the first time that round is asked about
+local function roundBase(i, r)
+    local p = P[i]
+    p.roundBase = p.roundBase or {}
+    if r <= 1 then return {} end
+    if not p.roundBase[r] and currentRound() >= r then
+        local b = {}
+        for _, key in ipairs(ST) do b[key] = totalScore(i, key) end
+        p.roundBase[r] = b
+    end
+    return p.roundBase[r] or {}
+end
+function GetScoreboardEntryScoreByType(i, t, roundIndex)
+    local key = ST[t]
+    if not key then return 0 end
+    if not ELIM then return totalScore(i, key) end
+    local r = roundIndex or 1
+    local cur = currentRound()
+    local startV = roundBase(i, r)[key] or 0
+    local endV = (r < cur) and (roundBase(i, r + 1)[key] or totalScore(i, key)) or totalScore(i, key)
+    return endV - startV
+end
+function GetBattlegroundCumulativeScoreForScoreboardEntryByType(i, t, roundIndex)
+    local key = ST[t]
+    if not key then return 0 end
+    return totalScore(i, key)
+end
+function DoesBattlegroundHaveLimitedPlayerLives() return ELIM end
+function GetScoreboardEntryNumLivesRemaining(i, roundIndex)
+    return math.max(0, 3 - GetScoreboardEntryScoreByType(i, 3, roundIndex or currentRound()))
 end
 -- medal iterators, as in API 101051
 local function nextMedal(medals, last)
@@ -596,8 +635,8 @@ local cumulative = {}
 function GenerateCumulativeMedalInfoForScoreboardEntry(i, roundIndex) cumulative = P[i].medals end
 function GetNextBattlegroundCumulativeMedalId(last) return nextMedal(cumulative, last) end
 function GetBattlegroundCumulativeNumEarnedMedalsById(id) return cumulative[id] and cumulative[id].count or 0 end
-function GetCurrentBattlegroundRoundIndex() return 1 end
-function GetBattlegroundNumRounds() return 1 end
+function GetCurrentBattlegroundRoundIndex() return currentRound() end
+function GetBattlegroundNumRounds() return ELIM and 3 or 1 end
 function GetMedalInfo(id) return MEDAL[id][2] .. "^n", "medal_" .. id .. ".dds", "", 50 end
 function GetAbilityName(id)
     for _, set in pairs(ABILITIES) do for _, a in ipairs(set) do if a[1] == id then return a[2] .. "^n" end end end
@@ -850,6 +889,8 @@ CUR.baseTs = cfg.ts - math.floor(simMs / 1000)
 local dm = cfg.gameType == "Deathmatch"
 local MATCH_MS = simMs + (dm and 10 or 8) * 60 * 1000
 local startMs = simMs
+CUR.startMs = simMs
+for _, p in ipairs(P) do p.roundBase = nil end
 local nextFlag = simMs + 70000
 local nextScoreboardEvent = simMs
 local nextFrame = simMs

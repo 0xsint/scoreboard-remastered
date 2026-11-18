@@ -213,7 +213,8 @@ function UI:BuildColumns(match)
         key = "name", label = "Player", width = math.floor(200 * scale), align = TEXT_ALIGN_LEFT, priority = 0,
         text = function(p)
             local name = p.characterName ~= "" and p.characterName or p.displayName or "?"
-            if p.left then name = "|c888888" .. name .. " (left)|r" end
+            if p.left then name = "|c888888" .. name .. " (left)|r"
+            elseif match.limitedLives and p.lives == 0 then name = "|c888888" .. name .. " (out)|r" end
             -- the top scorer gets a medal
             if self.mvpKey and PlayerKey(p) == self.mvpKey then
                 name = name .. " " .. zo_iconFormat(TEX.mvp, st_.iconSize, st_.iconSize)
@@ -222,6 +223,14 @@ function UI:BuildColumns(match)
         end,
         sortValue = function(p) return (p.characterName or ""):lower() end,
     }
+
+    -- limited-lives modes (Elimination): lives left this round, like the native board
+    if match.limitedLives then
+        cols[#cols + 1] = {
+            key = "lives", label = "Lives", width = math.floor(56 * scale), numeric = true, priority = 1,
+            value = function(p) return p.lives end, tip = "Lives left this round",
+        }
+    end
 
     for _, st in ipairs(SBR.Battleground.scoreTypes or {}) do
         local key = st.key
@@ -1226,9 +1235,15 @@ function UI:RefreshHeader(match)
         if t then
             local r, g, bl = SBR.HexToRGB(t.color or "FFFFFF")
             b.emblem:SetTexture(SBR.TeamArt(id, "emblem"))
-            b.score:SetText(t.score ~= nil and tostring(t.score) or "-")
+            -- multi-round modes are won on rounds: show rounds won, not this round's score
+            if (match.numRounds or 1) > 1 and t.roundsWon ~= nil then
+                b.score:SetText(tostring(t.roundsWon))
+            else
+                b.score:SetText(t.score ~= nil and tostring(t.score) or "-")
+            end
             b.score:SetColor(1, 1, 1, 1)
-            b.name:SetText((id == match.localTeam and "* " or "") .. (t.name or ""))
+            b.name:SetText((id == match.localTeam and "* " or "") .. (t.name or "") ..
+                (((match.numRounds or 1) > 1 and t.roundsWon ~= nil) and "  ·  rounds" or ""))
             b.name:SetColor(r, g, bl, 1)
         end
     end

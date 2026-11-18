@@ -128,6 +128,15 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
   the kill log, both in a pre-selected box ready for Ctrl+C.
 - Keybinds: *Controls → Scoreboard Remastered*.
 
+### Round-based modes (Elimination)
+
+Like ESO's own board, the add-on reads the **current round**. In multi-round modes it
+shows **whole-match totals** (the game's cumulative scores). In limited-lives modes it
+adds a **Lives** column and greys out eliminated players ("out"), and the team blocks
+show rounds won. `SIM_ELIMINATION=1 SIM_AFTER=tools/test-elimination.lua` runs the
+simulator in a 3-round, limited-lives mode. It checks that the totals keep growing
+past round 1, which is what broke before 1.9.1.
+
 ### The look
 
 The scoreboard uses the game's own battleground art, like the battle report:
