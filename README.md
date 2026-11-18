@@ -115,6 +115,12 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 - **Click a row** to open its details beside the panel: medals, every fight stat, top
   abilities and the you-vs-them breakdown. Click the row again, or the X, to close.
 - Click a column header to sort. Hover a header to see what it measures.
+- **Fits any screen.** The panel sizes itself to ESO's UI canvas, which depends on your
+  resolution and UI scale. If all the columns don't fit, the least important ones go
+  first: you-vs-them, then minor score types (buffs, shields, flag-carrier healing...),
+  then the less-used fight stats. Anything dropped is still in the details pane. With
+  more players than fit, the mouse wheel scrolls the table. On a small canvas, the
+  details pane opens over the panel. The records window scales down to fit.
 - `<` `Live` `>` browse saved matches. **Export** gives a CSV and **Kill feed** gives
   the kill log, both in a pre-selected box ready for Ctrl+C.
 - Keybinds: *Controls → Scoreboard Remastered*.
@@ -252,6 +258,9 @@ out with ESO's anchor rules and draws them in a headless browser.
 
 Rendering the real layout at ESO's real font sizes found layout bugs that are now fixed:
 - The PC panel was wider than the screen.
+- With all 20 of the game's score types, the PC panel was 2506 px wide (ESO's canvas is
+  1920 at most UI scales). Score columns now have short names and a priority, the table
+  drops columns to fit the canvas, and the simulator uses the client's full score list.
 - Column headers were truncated.
 - The details pane and the records dialog ran into the gamepad button bar.
 - The stat tiles drew their text badge over the icon.
@@ -302,6 +311,9 @@ python3 tools/check-api.py <path-to>/esoui/ESOUIDocumentation.txt
 lua5.1 tools/simulate.lua . <path-to>/LibFights out/match.json out/screens.json
 node tools/render.js out/screens.json docs/screenshots   # needs Playwright + Chromium
 ```
+
+`SIM_GUIROOT=1366x768` (or any size) runs the simulation on a smaller UI canvas, as
+with a low resolution or a large UI scale, and the renderer draws at that size.
 
 ## Notes
 

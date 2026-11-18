@@ -3,22 +3,37 @@ local SBR = ScoreboardRemastered
 local BG = {}
 SBR.Battleground = BG
 
--- Preferred column order and short labels. Any other SCORE_TRACKER_TYPE_* constant
--- the client defines is discovered at load time and appended, so new score types
--- added by ZOS show up without an addon update.
+-- Column order, short labels and table priority for every SCORE_TRACKER_TYPE_* in
+-- API 101051. Priority decides what stays in the PC table when it has to shrink to
+-- fit the screen (1 = always, 2 = objectives, 3 = extras); everything is still in
+-- the details pane. Any other SCORE_TRACKER_TYPE_* constant the client defines is
+-- discovered at load time and appended (priority 3), so new score types added by
+-- ZOS show up without an add-on update.
 local PRIORITY = {
-    { "SCORE", "Score" },
-    { "KILL", "Kills" },
-    { "DEATH", "Deaths" },
-    { "ASSISTS", "Assists" },
-    { "KILL_STREAK", "Streak" },
-    { "DAMAGE_DONE", "Damage" },
-    { "HEALING_DONE", "Healing" },
-    { "DAMAGE_TAKEN", "Dmg Taken" },
-    { "FLAG_CAPTURED", "Flags" },
-    { "FLAG_RETURNED", "Returns" },
-    { "RELIC_CAPTURED", "Relics" },
-    { "CAPTURE_POINT", "Captures" },
+    { "SCORE", "Score", 1 },
+    { "KILL", "Kills", 1 },
+    { "DEATH", "Deaths", 1 },
+    { "ASSISTS", "Assists", 1 },
+    { "DAMAGE_DONE", "Damage", 1 },
+    { "HEALING_DONE", "Healing", 1 },
+    { "FLAG_CAPTURED", "Flags", 2 },
+    { "KILLED_FLAG_CARRIER", "FC kills", 2 },
+    { "FLAG_CARRIED_TIME", "Carried", 2 },
+    { "CAPTURE_DEFENSE_POINTS", "Def pts", 2 },
+    { "KILL_STREAK", "Streak", 3 },
+    { "DAMAGE_TAKEN", "Dmg taken", 3 },
+    { "DAMAGED_FLAG_CARRIER", "FC dmg", 3 },
+    { "HEALED_FLAG_CARRIER", "FC heal", 3 },
+    { "CAPTURE_KILLED_ATTACKER", "Atk kills", 3 },
+    { "CAPTURE_KILLED_DEFENDER", "Def kills", 3 },
+    { "HEALING_DEFENDERS", "Def heal", 3 },
+    { "DAMAGE_SHIELDS_GRANTED", "Shields", 3 },
+    { "BUFFS_GRANTED", "Buffs", 3 },
+    { "DEBUFFS_GRANTED", "Debuffs", 3 },
+    -- older names, kept in case a client still defines them
+    { "FLAG_RETURNED", "Returns", 2 },
+    { "RELIC_CAPTURED", "Relics", 2 },
+    { "CAPTURE_POINT", "Captures", 2 },
 }
 
 local IGNORED_SUFFIX = { "ITERATION", "MIN_VALUE", "MAX_VALUE", "INVALID", "NONE" }
@@ -28,15 +43,15 @@ local FALLBACK_TEAM_COLORS = { "F0723C", "6BC26B", "A77BE0" } -- drakes, daemons
 function BG:DiscoverScoreTypes()
     local list, seenKey, seenId = {}, {}, {}
 
-    local function add(suffix, label)
+    local function add(suffix, label, priority)
         if seenKey[suffix] then return end
         local id = _G["SCORE_TRACKER_TYPE_" .. suffix]
         if type(id) ~= "number" or seenId[id] then return end
         seenKey[suffix], seenId[id] = true, true
-        list[#list + 1] = { key = suffix, id = id, label = label or SBR.Prettify(suffix) }
+        list[#list + 1] = { key = suffix, id = id, label = label or SBR.Prettify(suffix), priority = priority or 3 }
     end
 
-    for _, entry in ipairs(PRIORITY) do add(entry[1], entry[2]) end
+    for _, entry in ipairs(PRIORITY) do add(entry[1], entry[2], entry[3]) end
 
     local extra = {}
     SBR.ForEachGlobal(function(k, v)

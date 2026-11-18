@@ -193,12 +193,12 @@ function UI:BuildColumns(match)
     local scale = st_.colScale
 
     cols[#cols + 1] = {
-        key = "class", label = "", width = st_.iconSize + 6, align = TEXT_ALIGN_CENTER,
+        key = "class", label = "", width = st_.iconSize + 6, align = TEXT_ALIGN_CENTER, priority = 0,
         text = function(p) return p.classIcon and zo_iconFormat(p.classIcon, st_.iconSize, st_.iconSize) or "" end,
         sortValue = function(p) return p.className or "" end,
     }
     cols[#cols + 1] = {
-        key = "name", label = "Player", width = math.floor(200 * scale), align = TEXT_ALIGN_LEFT,
+        key = "name", label = "Player", width = math.floor(200 * scale), align = TEXT_ALIGN_LEFT, priority = 0,
         text = function(p)
             local name = p.characterName ~= "" and p.characterName or p.displayName or "?"
             if p.left then name = "|c888888" .. name .. " (left)|r" end
@@ -213,14 +213,14 @@ function UI:BuildColumns(match)
         if (match.columnsSeen and match.columnsSeen[key]) and (not hideEmpty or AnyValue(players, get)) then
             cols[#cols + 1] = {
                 key = "s:" .. key, label = st.label, width = math.floor(math.max(52, #st.label * 8) * scale), numeric = true,
-                value = get, tip = st.label .. " (native scoreboard)",
+                value = get, tip = st.label .. " (native scoreboard)", priority = ({ 1, 2, 5 })[st.priority or 3] or 5,
             }
         end
     end
 
     cols[#cols + 1] = {
         key = "medals", label = "Medals", width = math.floor(56 * scale), numeric = true,
-        value = function(p) return p.medalCount end, tip = "Medals earned (open a row for the list)",
+        value = function(p) return p.medalCount end, tip = "Medals earned (open a row for the list)", priority = 2,
     }
 
     if SBR.sv.showFightColumns then
@@ -231,7 +231,7 @@ function UI:BuildColumns(match)
                 if AnyValue(players, get) then
                     cols[#cols + 1] = {
                         key = "f:" .. key, label = fc.label, width = math.floor(56 * scale), numeric = true, value = get,
-                        fmt = fc.fmt, tip = fc.tip .. FIGHT_TIP, fight = true,
+                        fmt = fc.fmt, tip = fc.tip .. FIGHT_TIP, fight = true, priority = fc.gp and 3 or 4,
                     }
                 end
             end
@@ -244,7 +244,7 @@ function UI:BuildColumns(match)
             local get = function(p) return p.vs and p.vs[key] end
             if AnyValue(players, get) then
                 cols[#cols + 1] = {
-                    key = "v:" .. key, label = vc.label, width = 56, numeric = true, value = get, tip = vc.tip, vs = true,
+                    key = "v:" .. key, label = vc.label, width = 56, numeric = true, value = get, tip = vc.tip, vs = true, priority = 6,
                 }
             end
         end
@@ -262,8 +262,57 @@ function UI:BuildColumns(match)
         end
         c.sortValue = c.sortValue or c.value
     end
+    self:FitColumns(cols)
     self.columns = cols
     return cols
+end
+
+-- Room on screen. GuiRoot is ESO's UI canvas: its size depends on resolution and UI
+-- scale (1920 x 1080 at 1080p and 100%, smaller at higher UI scales or on 1366 x 768).
+local SCREEN_MARGIN = 20
+local MIN_TABLE_WIDTH = 640
+
+function UI:GetScreenSize()
+    return (GuiRoot and GuiRoot:GetWidth() or 1920), (GuiRoot and GuiRoot:GetHeight() or 1080)
+end
+
+-- Widest the table can be: the screen minus margins and, when there's room, the
+-- details pane beside it (otherwise the pane opens over the right of the panel).
+function UI:GetMaxContentWidth()
+    local s = self.style
+    local w = self:GetScreenSize()
+    local avail = w - SCREEN_MARGIN * 2 - s.pad * 2
+    self.paneBeside = avail - (s.detailsW + 8) >= MIN_TABLE_WIDTH
+    if self.paneBeside then avail = avail - (s.detailsW + 8) end
+    return avail
+end
+
+-- Drops the least important columns until the table fits on screen. Nothing is
+-- lost: every score and fight stat is still in the details pane.
+function UI:FitColumns(cols)
+    local maxWidth = self:GetMaxContentWidth()
+    local function total()
+        local x = STRIP_W + 4
+        for _, c in ipairs(cols) do x = x + c.width + 6 end
+        return x
+    end
+    self.droppedColumns = {}
+    while total() > maxWidth do
+        local worst
+        for i, c in ipairs(cols) do
+            if (c.priority or 0) > 0 and (not worst or c.priority >= cols[worst].priority) then worst = i end
+        end
+        if not worst then break end
+        self.droppedColumns[cols[worst].key] = true
+        table.remove(cols, worst)
+    end
+    -- still too wide (tiny canvas): narrow the name column, down to 120
+    local over = total() - maxWidth
+    if over > 0 then
+        for _, c in ipairs(cols) do
+            if c.key == "name" then c.width = math.max(120, c.width - over) end
+        end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -317,6 +366,8 @@ function UI:Create()
 
     self.headerRow = WM:CreateControl(NextName("Header"), tlw, CT_CONTROL)
     self.list = WM:CreateControl(NextName("List"), tlw, CT_CONTROL)
+    self.list:SetMouseEnabled(true)
+    self.list:SetHandler("OnMouseWheel", function(_, delta) self:Scroll(delta > 0 and -3 or 3) end)
 
     self.emptyLabel = CreateLabel(self.list, "ZoFontGame", TEXT_ALIGN_CENTER)
     self.emptyLabel:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, 10)
@@ -359,7 +410,12 @@ function UI:CreateDetails()
     local pane = WM:CreateControl(NextName("Details"), self.control, CT_CONTROL)
     pane:SetHidden(true)
     pane:SetMouseEnabled(true)
+    pane:SetDrawLevel(10) -- above the rows when it has to open over the panel
     self.details = pane
+    -- solid fill, shown only when the pane has to open over the panel
+    self.detailsFill = CreateTexture(pane, 0, 0, 0, 0.9)
+    self.detailsFill:SetAnchorFill(pane)
+    self.detailsFill:SetHidden(true)
     self.detailsBgKeyboard = CreateBackdrop(pane, { "ZO_DefaultBackdrop" })
     self.detailsBgGamepad = CreateBackdrop(pane, { "ZO_DefaultBackdrop_Gamepad", "ZO_DefaultBackdrop" })
 
@@ -466,7 +522,10 @@ function UI:ApplyPosition()
     end
     local pos = SBR.sv.position
     if pos and pos.left then
-        c:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, pos.left, pos.top)
+        -- a saved spot from an earlier, larger canvas (UI scale or resolution change)
+        -- is pulled back on screen
+        local r = self:GetPanelRect()
+        c:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, r.left, r.top)
         return
     end
     local native = SBR.Hook and SBR.Hook:GetAnchorControl()
@@ -475,7 +534,8 @@ function UI:ApplyPosition()
     if mode == "over" then
         -- centred, a little left so the details pane fits on the right; a dim layer
         -- behind the panel keeps the native board from showing through
-        c:SetAnchor(CENTER, GuiRoot, CENTER, -math.floor(self.style.detailsW / 2), -30)
+        local r = self:GetPanelRect()
+        c:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, r.left, r.top)
         if self.dim and native then self.dim:SetHidden(false) end
         return
     end
@@ -490,6 +550,27 @@ function UI:ApplyPosition()
     else
         c:SetAnchor(CENTER, GuiRoot, CENTER, 0, 0)
     end
+end
+
+-- Where the panel is, worked out from its size rather than read back from the control
+-- (GetLeft / GetRight lag a frame behind a resize). Centred "over" placement sits a
+-- little left so the details pane fits beside it, a little high, and inside the screen.
+function UI:GetPanelRect()
+    local screenW, screenH = self:GetScreenSize()
+    local w = self.panelW or (self.control and self.control:GetWidth()) or 900
+    local h = self.panelH or (self.control and self.control:GetHeight()) or 400
+    local pos = SBR.sv.position
+    local left, top
+    if pos and pos.left then
+        left, top = pos.left, pos.top
+    else
+        local shift = self.paneBeside and math.floor((self.style.detailsW + 8) / 2) or 0
+        left = math.floor((screenW - w) / 2) - shift
+        top = math.floor((screenH - h) / 2) - 30
+    end
+    left = zo_clamp(left, 0, math.max(0, screenW - w))
+    top = zo_clamp(top, 0, math.max(0, screenH - h))
+    return { left = left, top = top, right = left + w, bottom = top + h }
 end
 
 function UI:ResetPosition()
@@ -530,11 +611,23 @@ function UI:StyleRow(row, i)
     end
 end
 
+-- Mouse wheel over the table when it has more players than fit on screen.
+function UI:Scroll(rows)
+    local n = self.sortedPlayers and #self.sortedPlayers or 0
+    local maxOffset = math.max(0, n - (self.maxVisibleRows or n))
+    local offset = zo_clamp((self.scrollOffset or 0) + rows, 0, maxOffset)
+    if offset ~= (self.scrollOffset or 0) then
+        self.scrollOffset = offset
+        self:Refresh()
+    end
+end
+
 function UI:GetRow(i)
     local row = self.rows[i]
     if row then return row end
     row = WM:CreateControl(NextName("Row"), self.list, CT_CONTROL)
     row:SetMouseEnabled(true)
+    row:SetHandler("OnMouseWheel", function(_, delta) self:Scroll(delta > 0 and -3 or 3) end)
     row.bg = CreateTexture(row, 1, 1, 1, 0)
     row.bg:SetAnchorFill(row)
     row.highlight = CreateTexture(row, 1, 1, 1, 1)
@@ -678,15 +771,31 @@ function UI:RefreshDetails()
     self.details:SetHeight(h)
     self.detailsBody:SetHeight(h - (s.rowH + s.pad * 2 + 10))
 
-    -- put the pane on whichever side of the panel has room
+    -- beside the panel on whichever side has room; if neither does, over the right
+    -- of the panel (the canvas is too small for both side by side)
     local pane, tlw = self.details, self.control
+    local screenW, screenH = self:GetScreenSize()
     pane:ClearAnchors()
-    local right = (tlw:GetRight() or 0) + s.detailsW + 8
-    local roomRight = self.mode == "gamepad" or (SBR.sv.attach or "over") == "over"
-    if not roomRight and right > (GuiRoot:GetWidth() or 1920) then
-        pane:SetAnchor(TOPRIGHT, tlw, TOPLEFT, -8, 0)
-    else
+    local rect = self:GetPanelRect()
+    local need = s.detailsW + 8
+    local top
+    if rect.right + need <= screenW then
         pane:SetAnchor(TOPLEFT, tlw, TOPRIGHT, 8, 0)
+        top = rect.top
+    elseif rect.left - need >= 0 then
+        pane:SetAnchor(TOPRIGHT, tlw, TOPLEFT, -8, 0)
+        top = rect.top
+    else
+        pane:SetAnchor(TOPRIGHT, tlw, TOPRIGHT, -s.pad, s.topH)
+        top = rect.top + s.topH
+    end
+    self.detailsFill:SetHidden(top == rect.top)
+    -- never taller than the room left below its top edge
+    local room = screenH - top - SCREEN_MARGIN
+    if h > room then
+        h = math.max(120, room)
+        self.details:SetHeight(h)
+        self.detailsBody:SetHeight(h - (s.rowH + s.pad * 2 + 10))
     end
     if SBR.Gamepad then SBR.Gamepad:UpdateKeybinds() end
 end
@@ -804,6 +913,15 @@ function UI:PlayerDetailsText(p)
             if p.scores[key] then parts[#parts + 1] = string.format("%s %s", SBR.Prettify(key), tostring(p.scores[key])) end
         end
         if #parts > 0 then add(table.concat(parts, "   ")) end
+        -- score columns that didn't fit in the table on this screen
+        local more = {}
+        for _, st in ipairs(SBR.Battleground.scoreTypes or {}) do
+            local v = p.scores[st.key]
+            if v and v ~= 0 and self.droppedColumns and self.droppedColumns["s:" .. st.key] then
+                more[#more + 1] = string.format("%s %s", st.label, SBR.FormatNumber(v))
+            end
+        end
+        for i = 1, #more, 3 do add(table.concat(more, "   ", i, math.min(i + 2, #more))) end
     end
     if p.medals and #p.medals > 0 then
         add(" ")
@@ -1028,10 +1146,26 @@ function UI:Refresh()
     self.emptyLabel:SetHidden(#players > 0)
     self.emptyLabel:SetWidth(contentWidth)
 
-    local listH = math.max(#players, 2) * s.rowH
+    -- as many rows as fit on screen; the mouse wheel scrolls the rest
+    local _, screenH = self:GetScreenSize()
+    local chrome = s.topH + s.headerH + 2 + s.footerH + s.pad + SCREEN_MARGIN * 2
+    local maxRows = math.max(4, math.floor((screenH - chrome) / s.rowH))
+    self.maxVisibleRows = maxRows
+    self.scrollOffset = zo_clamp(self.scrollOffset or 0, 0, math.max(0, #players - maxRows))
+    for i = 1, #players do
+        local row = self.rows[i]
+        local slot = i - 1 - self.scrollOffset
+        row:ClearAnchors()
+        row:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, slot * s.rowH)
+        if slot < 0 or slot >= maxRows then row:SetHidden(true) end
+    end
+    local listH = math.max(math.min(#players, maxRows), 2) * s.rowH
     self.headerRow:SetWidth(contentWidth)
     self.list:SetDimensions(contentWidth, listH)
-    self.control:SetDimensions(contentWidth + s.pad * 2, s.topH + s.headerH + 2 + listH + s.footerH + s.pad)
+    self.panelW, self.panelH = contentWidth + s.pad * 2, s.topH + s.headerH + 2 + listH + s.footerH + s.pad
+    self.control:SetDimensions(self.panelW, self.panelH)
+    -- the centred position depends on whether the details pane fits beside the panel
+    if not (SBR.sv.position and SBR.sv.position.left) then self:ApplyPosition() end
 
     -- footer state
     local history = SBR.MatchLog:GetHistory()

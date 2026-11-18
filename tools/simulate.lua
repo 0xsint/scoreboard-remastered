@@ -119,6 +119,8 @@ WINDOW_MANAGER = {
     end,
 }
 GuiRoot = ctl("GuiRoot", nil, "root"); GuiRoot._w, GuiRoot._h = 1920, 1080
+-- SIM_GUIROOT=1366x768 simulates a smaller UI canvas (low resolution or a large UI scale)
+do local w, h = (os.getenv("SIM_GUIROOT") or ""):match("^(%d+)x(%d+)$"); if w then GuiRoot._w, GuiRoot._h = tonumber(w), tonumber(h) end end
 InformationTooltip = ctl("InformationTooltip")
 function InitializeTooltip() end function SetTooltipText() end function ClearTooltip() end
 SLASH_COMMANDS = {}
@@ -387,9 +389,6 @@ for _, n in ipairs({ "EVENT_ADD_ON_LOADED", "EVENT_PLAYER_ACTIVATED", "EVENT_BAT
     ev = ev + 1; _G[n] = ev
 end
 local C = {
-    SCORE_TRACKER_TYPE_SCORE = 1, SCORE_TRACKER_TYPE_KILL = 2, SCORE_TRACKER_TYPE_DEATH = 3,
-    SCORE_TRACKER_TYPE_ASSISTS = 4, SCORE_TRACKER_TYPE_DAMAGE_DONE = 5, SCORE_TRACKER_TYPE_HEALING_DONE = 6,
-    SCORE_TRACKER_TYPE_FLAG_CAPTURED = 7,
     BATTLEGROUND_TEAM_ITERATION_BEGIN = 1, BATTLEGROUND_TEAM_ITERATION_END = 2,
     BATTLEGROUND_STATE_PREROUND = 1, BATTLEGROUND_STATE_RUNNING = 3, BATTLEGROUND_STATE_FINISHED = 5,
     ACTION_RESULT_DAMAGE = 1, ACTION_RESULT_CRITICAL_DAMAGE = 2, ACTION_RESULT_DOT_TICK = 1073741825,
@@ -508,8 +507,32 @@ function GetScoreboardEntryInfo(i) local p = P[i]; return p.raw, p.acct, p.team,
 function GetScoreboardEntryClassId(i) return P[i].classId end
 function GetClassName(_, c) return CLASS_NAME[c] .. "^m" end
 function ZO_GetClassIcon(c) return "class_" .. c .. ".dds" end
-local ST = { "SCORE", "KILL", "DEATH", "ASSISTS", "DAMAGE_DONE", "HEALING_DONE", "FLAG_CAPTURED" }
-function GetScoreboardEntryScoreByType(i, t) return P[i].sc[ST[t]] end
+-- every SCORE_TRACKER_TYPE_* the live client defines (API 101051, ESOUIDocumentation.txt);
+-- the game returns 0, not nil, for types the mode doesn't use
+local ST = { "SCORE", "KILL", "DEATH", "ASSISTS", "DAMAGE_DONE", "HEALING_DONE", "FLAG_CAPTURED",
+    "KILL_STREAK", "DAMAGE_TAKEN", "BUFFS_GRANTED", "DEBUFFS_GRANTED", "DAMAGE_SHIELDS_GRANTED",
+    "CAPTURE_DEFENSE_POINTS", "CAPTURE_KILLED_ATTACKER", "CAPTURE_KILLED_DEFENDER", "HEALING_DEFENDERS",
+    "DAMAGED_FLAG_CARRIER", "HEALED_FLAG_CARRIER", "KILLED_FLAG_CARRIER", "FLAG_CARRIED_TIME" }
+for id, key in ipairs(ST) do _G["SCORE_TRACKER_TYPE_" .. key] = id end
+SCORE_TRACKER_TYPE_NONE = 0
+local function extraScore(p, key)
+    -- stable per player and key, roughly in proportion to their damage / healing
+    local h = 0
+    for c in (p.name .. key):gmatch(".") do h = (h * 31 + c:byte()) % 9973 end
+    local base = (p.sc.DAMAGE_DONE or 0) + (p.sc.HEALING_DONE or 0)
+    if key == "KILL_STREAK" then return math.min(p.sc.KILL or 0, h % 6) end
+    if key == "FLAG_CARRIED_TIME" then return h % 140 end
+    if key:find("CAPTURE") then return 0 end -- not a capture-point match
+    if key:find("FLAG") then return h % 4 end
+    return math.floor(base * ((h % 40) / 100))
+end
+function GetScoreboardEntryScoreByType(i, t)
+    local key = ST[t]
+    if not key then return 0 end
+    local v = P[i].sc[key]
+    if v == nil then v = extraScore(P[i], key) end
+    return v
+end
 -- medal iterators, as in API 101051
 local function nextMedal(medals, last)
     local ids = {}
@@ -965,7 +988,7 @@ if SCREENS_OUT then
     local function serialize(c)
         local node = { id = c._id, name = c._name, kind = c._kind, virtual = c._virtual, hidden = c._hidden,
             w = c._w, h = c._h, color = c._color, alpha = c._alpha, text = c._text, font = c._font,
-            halign = c._halign, valign = c._valign, texture = c._texture, upper = c._upper, wrap = c._wrap,
+            halign = c._halign, valign = c._valign, texture = c._texture, upper = c._upper, wrap = c._wrap, scale = c._scale,
             anchors = {}, children = {} }
         for _, a in ipairs(c._anchors) do
             node.anchors[#node.anchors + 1] = { a[1], a[2] and a[2]._id or GuiRoot._id, a[3], a[4], a[5] }
@@ -1023,7 +1046,8 @@ if SCREENS_OUT then
     end
     local function screen(id, title, mode, draw, standins)
         SCREENS[#SCREENS + 1] = { id = id, title = title, mode = mode, draw = draw, standins = standins,
-            strip = strip(), trees = roots(), shortcutLayer = IsActionLayerActiveByName("User Interface Shortcuts") }
+            strip = strip(), trees = roots(), shortcutLayer = IsActionLayerActiveByName("User Interface Shortcuts"),
+            rootW = GuiRoot._w, rootH = GuiRoot._h }
         io.stderr:write("screen " .. id .. "\n")
     end
     local W, GP, MB = SBR.Window, SBR.Gamepad, SBR.MatchBrowser

@@ -37,7 +37,7 @@ const FACES = {
 
 // Runs inside the page: resolve layout, draw.
 function pageMain(screen, native, FONTS, FACES) {
-  const W = 1920, H = 1080;
+  const W = screen.rootW || 1920, H = screen.rootH || 1080; // GuiRoot (SIM_GUIROOT)
   const nodes = new Map();
   const parentOf = new Map();
   (function index(list, parent) {
@@ -174,11 +174,14 @@ function pageMain(screen, native, FONTS, FACES) {
     while (cur != null) { const n = nodes.get(cur); a *= n.alpha ?? 1; cur = parentOf.get(cur); }
     return a;
   }
+  // Control:SetScale: the subtree is laid out unscaled, then scaled about the
+  // control's anchor point (ESO keeps the anchor fixed and scales size and children)
+  let target = null;
   function el(r, css, html = "") {
     const d = document.createElement("div");
     d.style.cssText = `position:absolute;left:${r.x}px;top:${r.y}px;width:${Math.max(0, r.w)}px;height:${Math.max(0, r.h)}px;${css}`;
     d.innerHTML = html;
-    stage.appendChild(d);
+    (target || stage).appendChild(d);
     return d;
   }
   function draw(n) {
@@ -213,7 +216,18 @@ function pageMain(screen, native, FONTS, FACES) {
       el(r, `display:flex;justify-content:${jh};align-items:${jv};text-align:${n.halign || "left"};overflow:hidden;color:${rgba(c, a)};font:${f.css};line-height:1.25;text-shadow:${shadow};${n.upper ? "text-transform:uppercase;" : ""}`,
         `<span style="${single ? "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block" : ""}">${markup(n.text)}</span>`);
     }
+    const scaled = n.scale != null && n.scale !== 1;
+    const saved = target;
+    if (scaled) {
+      const a0 = n.anchors[0] || ["CENTER"];
+      const px = r.x + FX[a0[0]] * r.w, py = r.y + FY[a0[0]] * r.h;
+      const box = document.createElement("div");
+      box.style.cssText = `position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:${px}px ${py}px;transform:scale(${n.scale})`;
+      (target || stage).appendChild(box);
+      target = box;
+    }
     for (const ch of n.children) draw(ch);
+    target = saved;
   }
 
   // stand-ins for what ESO draws itself
@@ -381,9 +395,10 @@ function pageMain(screen, native, FONTS, FACES) {
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
   for (const screen of data.screens) {
+    await page.setViewportSize({ width: screen.rootW || 1920, height: screen.rootH || 1080 });
     await page.setContent(`<!doctype html><html><head><meta charset="utf-8">
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;500;700&family=Barlow+Semi+Condensed:wght@500;700&display=block">
-      <style>html,body{margin:0;background:#000}#stage{position:relative;width:1920px;height:1080px;overflow:hidden}.ic{display:inline-block;vertical-align:middle}.ic svg{display:block}</style>
+      <style>html,body{margin:0;background:#000}#stage{position:relative;width:${screen.rootW || 1920}px;height:${screen.rootH || 1080}px;overflow:hidden}.ic{display:inline-block;vertical-align:middle}.ic svg{display:block}</style>
       </head><body><div id="stage"></div></body></html>`, { waitUntil: "networkidle" });
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(([s, n, F, FA, src]) => { eval(src); pageMain(s, n, F, FA); },

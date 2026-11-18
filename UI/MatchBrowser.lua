@@ -25,6 +25,7 @@ SBR.MatchBrowser = MB
 local WM = WINDOW_MANAGER
 local VISIBLE_ROWS = 7 -- keeps the dialog above the gamepad keybind strip (128 px)
 local ROWS_TOP = 200
+local DESIGN_W, DESIGN_H = 1920, 1080
 local ROW_H = 86
 local LIST_W = 760
 local CARD_W = 980
@@ -158,8 +159,23 @@ function MB:Create()
     local dim = Tex(tlw, 0, 0, 0, 0.6)
     dim:SetAnchorFill(tlw)
 
-    self:CreateList(tlw)
-    self:CreateCard(tlw)
+    -- laid out for a 1920 x 1080 canvas; scaled down to fit smaller ones (see FitToScreen)
+    local frame = WM:CreateControl(Name("Frame"), tlw, CT_CONTROL)
+    frame:SetDimensions(DESIGN_W, DESIGN_H)
+    frame:SetAnchor(CENTER, tlw, CENTER, 0, 0)
+    self.frame = frame
+
+    self:CreateList(frame)
+    self:CreateCard(frame)
+end
+
+-- GuiRoot depends on resolution and UI scale; at 1366 x 768, or with a large UI scale,
+-- the dialog is scaled down so all of it stays on screen.
+function MB:FitToScreen()
+    if not self.frame then return end
+    local w = GuiRoot and GuiRoot:GetWidth() or DESIGN_W
+    local h = GuiRoot and GuiRoot:GetHeight() or DESIGN_H
+    self.frame:SetScale(math.min(1, w / DESIGN_W, h / DESIGN_H))
 end
 
 function MB:CreateList(tlw)
@@ -955,6 +971,7 @@ function MB:Close()
 end
 
 function MB:OnShown()
+    self:FitToScreen()
     self:Reload()
     self:Render()
     KEYBIND_STRIP:AddKeybindButtonGroup(self.keybinds)
