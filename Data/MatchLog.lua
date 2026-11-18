@@ -61,9 +61,22 @@ end
 local OLD_DEFAULT_HISTORY = 50
 local NEW_DEFAULT_HISTORY = 20
 
+-- History storage. Finished matches are saved packed (SBR.Pack, see Util.lua) in
+-- sv.packedHistory as { id, at = startedAt, p = packed }, and unpacked the first time
+-- something reads them. sv.history holds matches saved by older versions as plain
+-- tables until the background job packs them. self.history is the working list
+-- (oldest first) that everything else reads.
+local function ByStart(a, b) return (a.startedAt or 0) < (b.startedAt or 0) end
+
 function ML:Init(sv)
     self.sv = sv
     sv.history = sv.history or {}
+    sv.packedHistory = sv.packedHistory or {}
+    local list = {}
+    for _, m in ipairs(sv.history) do list[#list + 1] = m end
+    for _, e in ipairs(sv.packedHistory) do list[#list + 1] = SBR.LazyUnpack(e.p, { id = e.id, startedAt = e.at }) end
+    table.sort(list, ByStart)
+    self.history = list
     -- 1.4: fewer full scoreboards by default (every older match is still a summary in
     -- the records); a value someone picked themselves is kept
     if not sv.historyDefault14 then
@@ -73,61 +86,50 @@ function ML:Init(sv)
     end
 end
 
--- After login: shrink what older versions saved, a small step at a time (one match,
--- or a few hundred entries, every 200 ms), never at load time:
+-- After login: convert what older versions saved, a small step at a time (one match,
+-- or a few dozen entries, every 200 ms), never at load time:
 --   1. trim history to maxHistory (every match is still a record in the database)
---   2. store kill-feed recaps as strings
+--   2. pack matches saved as plain tables (sv.history -> sv.packedHistory)
 --   3. forget "already counted" match ids that are no longer in history
---   4. trim the player index to maxPlayers, longest-unseen first
+--   4. the database: pack records and players, trim the player index
 local CHUNK = 200
 
 function ML:StartBackgroundCompaction()
     if self.compacting then return end
     self.compacting = true
     local ns = SBR.name .. "_Compact"
-    local phase, i = 1, 1
+    local phase = 1
     local appliedKey, inHistory
     EVENT_MANAGER:RegisterForUpdate(ns, 200, function()
         local sv, DB = self.sv, SBR.MatchDB
         if phase == 1 then
-            if #sv.history > (sv.maxHistory or NEW_DEFAULT_HISTORY) then table.remove(sv.history, 1) return end
+            self:TrimHistory()
             phase = 2
         elseif phase == 2 then
-            local m = sv.history[i]
+            local m = table.remove(sv.history, 1)
             if not m then phase = 3 return end
             for _, k in ipairs(m.killFeed or {}) do
                 if k.recap and type(k.recap[1]) == "table" then k.recap = ML.EncodeRecap(k.recap) end
             end
-            i = i + 1
+            self:StoreMatch(m)
         elseif phase == 3 then
             if not (DB and DB.applied) then phase = 4 return end
             if not inHistory then
                 inHistory = {}
-                for _, m in ipairs(sv.history) do if m.id then inHistory[m.id] = true end end
+                for _, m in ipairs(self.history) do if m.id then inHistory[m.id] = true end end
                 if sv.current and sv.current.id then inHistory[sv.current.id] = true end
             end
             for _ = 1, CHUNK do
                 local nextKey = next(DB.applied, appliedKey)
                 if nextKey == nil then phase = 4 return end
                 if not inHistory[nextKey] then
-                    -- removing the current key is safe for next(); step past it first
-                    DB.applied[nextKey] = nil
+                    DB.applied[nextKey] = nil -- clearing a field during next() is allowed
                 else
                     appliedKey = nextKey
                 end
             end
         else
-            local max = sv.maxPlayers or 1000
-            local count, oldestKey, oldest = 0, nil, nil
-            for k, e in pairs(DB and DB.players or {}) do
-                count = count + 1
-                if not e.isYou and (not oldest or (e.lastSeen or 0) < oldest) then oldestKey, oldest = k, e.lastSeen or 0 end
-            end
-            if count > max and oldestKey then
-                DB.players[oldestKey] = nil
-            else
-                EVENT_MANAGER:UnregisterForUpdate(ns)
-            end
+            if not DB or DB:MigrateStep() then EVENT_MANAGER:UnregisterForUpdate(ns) end
         end
     end)
 end
@@ -137,12 +139,32 @@ function ML:GetCurrent()
 end
 
 function ML:GetHistory()
-    return self.sv.history
+    return self.history
 end
 
 -- The match the live view should show: in-progress first, else the last finished one.
 function ML:GetLive()
-    return self.sv.current or self.sv.history[#self.sv.history]
+    return self.sv.current or self.history[#self.history]
+end
+
+function ML:StoreMatch(match)
+    table.insert(self.sv.packedHistory, { id = match.id, at = match.startedAt, p = SBR.Pack(SBR.Realize(match)) })
+end
+
+function ML:DropStoredMatch(id)
+    for _, store in ipairs({ self.sv.packedHistory, self.sv.history }) do
+        for i = #store, 1, -1 do
+            if store[i].id == id then table.remove(store, i) return end
+        end
+    end
+end
+
+function ML:TrimHistory()
+    local max = self.sv.maxHistory or NEW_DEFAULT_HISTORY
+    while #self.history > max do
+        local old = table.remove(self.history, 1)
+        self:DropStoredMatch(old.id)
+    end
 end
 
 function ML:Begin(info)
@@ -367,10 +389,10 @@ function ML:Finalize(reason)
     match.result = reason == "finished" and DetermineResult(match) or (reason == "left" and "left" or "unknown")
     match.startedMs = nil
 
-    table.insert(self.sv.history, match)
+    table.insert(self.history, match)
+    self:StoreMatch(match)
     if reason ~= "reload" or next(match.players or {}) then SBR.MatchDB:Add(match) end
-    local max = self.sv.maxHistory or NEW_DEFAULT_HISTORY
-    while #self.sv.history > max do table.remove(self.sv.history, 1) end
+    self:TrimHistory()
     self.sv.current = nil
 
     if SBR.sv.chatSummary and reason ~= "reload" then self:PrintSummary(match) end
@@ -463,6 +485,8 @@ function ML:OnMedal(medalId, name, icon, value)
 end
 
 function ML:ClearHistory()
+    ZO_ClearNumericallyIndexedTable(self.history)
     ZO_ClearNumericallyIndexedTable(self.sv.history)
+    ZO_ClearNumericallyIndexedTable(self.sv.packedHistory)
     SBR.Window:OnDataChanged()
 end

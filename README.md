@@ -381,27 +381,32 @@ None of the functions the add-on calls are private or protected (`tools/check-ap
 
 ### Loading (`/reloadui`, login)
 
-ESO rebuilds an add-on's saved variables in full on every load, before any add-on code
-runs, and that counts against the load-time CPU budget ("CPU budget reached"). So what
-is saved is kept small:
+A saved-variables file is Lua code that ESO runs on every load, before any add-on
+code, inside the add-on's load-time CPU budget ("CPU budget reached"). Every saved table
+and field costs time there, while a long string costs almost nothing. So:
 
-- **Kill-feed recaps**, most of a saved match, are one short string per hit instead of
-  a table per hit. Kills keep only what's shown (time, killer, victim, teams, ability).
-  Medals keep id, count, name and icon.
-- **Player index:** abilities and classes are plain numbers, with one shared icon table.
-- **Fewer full scoreboards:** 20 by default on PC (was 50) and 10 on console. Every older
-  match is still in Battleground records as a summary. A setting you changed yourself is
-  kept. The player index keeps 1000 players on PC (was 2000) and 400 on console.
+- **Packed storage:** every finished match, record and player is saved as a few
+  strings (`SBR.Pack` in `Util.lua`, at most 1900 bytes each, because ESO keeps saved
+  strings only up to about 2000 characters). Only an id and a timestamp stay readable
+  so lists can be sorted and searched. Each one is unpacked the first time something
+  reads it (a typical match takes about 2 ms), never all at load.
+- **Less saved:** recaps as one string per hit, kills and medals with only the shown
+  fields, and players with abilities and classes as numbers.
+- **Fewer full scoreboards:** 20 by default on PC (was 50) and 10 on console. Every
+  older match is still in Battleground records as a summary. A setting you changed
+  yourself is kept. The player index keeps 1000 players on PC (was 2000) and 400 on
+  console.
 - **No load-time work:** the windows are built the first time they open, and nothing
   scans the global table.
-- **Older saves** shrink in the background after login, one small step every 200 ms
-  (about 47 s for 30 old matches): history trimmed to the limit, recaps converted,
-  forgotten match ids and extra players dropped. Nothing heavy runs at load.
+- **Older saves** convert in the background after login, one small step every 200 ms
+  (about a minute for 30 old matches): history trimmed, matches, records and players
+  packed, forgotten match ids and extra players dropped. Then the next save is small.
 
-In the simulation (8 matches), a saved match went from about 4,160 table entries to
-about 2,440, and the default PC save from about 208,000 entries (50 matches) to about
-49,000 (20 matches). `lua5.1 tools/test-savedvars.lua` checks the encoding and the
-background compaction.
+In the simulation (8 matches), the saved data went from about 22,000 tables to about
+400. A 1.3-format test save with 30 matches and 1200 players went from 13,151 tables to
+1,081. `lua5.1 tools/test-savedvars.lua` tests packing, recaps and converting an old
+save. `SIM_AFTER=tools/test-reload.lua` (with the simulator) saves, reloads and
+compares every match, record and player.
 
 ### In battle
 

@@ -1300,7 +1300,9 @@ if SCREENS_OUT then
     fh2:close()
 end
 
-if os.getenv("SIM_SVSIZE") then dofile(os.getenv("SIM_SVSIZE")) end
+-- SIM_AFTER=<file>: run a check script against the finished simulation
+-- (tools/test-reload.lua: save -> reload round trip of the saved variables)
+if os.getenv("SIM_AFTER") then dofile(os.getenv("SIM_AFTER")) end
 
 if PROFILE then
     local keys = {}

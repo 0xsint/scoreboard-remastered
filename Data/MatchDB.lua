@@ -29,13 +29,107 @@ function DB:Init(sv)
     sv.db.classIcons = sv.db.classIcons or {}
     self.icons, self.classIcons = sv.db.icons, sv.db.classIcons
     self.sv = sv
-    self.records = sv.db.records
-    self.players = sv.db.players
     self.applied = sv.db.applied
+    -- Storage: records and players are saved packed (SBR.Pack, Util.lua), one or a
+    -- few strings each, and unpacked the first time they're read:
+    --   sv.db.recordsPacked  list of { id, at, p }
+    --   sv.db.playersPacked  key -> { p, t = lastSeen, y = isYou }
+    -- sv.db.records / sv.db.players hold what older versions saved as plain tables
+    -- until the background job (MigrateStep) packs them.
+    local db = sv.db
+    db.records = db.records or {}
+    db.recordsPacked = db.recordsPacked or {}
+    db.playersPacked = db.playersPacked or {}
+    self.records = {}
+    for _, r in ipairs(db.records) do self.records[#self.records + 1] = r end
+    for _, e in ipairs(db.recordsPacked) do self.records[#self.records + 1] = SBR.LazyUnpack(e.p, { id = e.id, at = e.at }) end
+    table.sort(self.records, function(a, b) return Num(a.at) < Num(b.at) end)
+    self.players = {}
+    for k, e in pairs(db.players) do self.players[k] = e end
+    for k, st in pairs(db.playersPacked) do self.players[k] = SBR.LazyUnpack(st.p, { key = k }) end
     -- matches saved before the database (or the player index) existed
-    for _, m in ipairs(sv.history or {}) do
-        if m.endedAt and not self.applied[m.id] then self:Add(m) end
+    for _, m in ipairs(SBR.MatchLog:GetHistory()) do
+        if not self.applied[m.id] and m.endedAt then self:Add(m) end
     end
+end
+
+function DB:StoreRecord(rec)
+    local db = self.sv.db
+    local entry = { id = rec.id, at = rec.at, p = SBR.Pack(SBR.Realize(rec)) }
+    for i = #db.records, 1, -1 do if db.records[i].id == rec.id then table.remove(db.records, i) end end
+    for i, e in ipairs(db.recordsPacked) do
+        if e.id == rec.id then db.recordsPacked[i] = entry return end
+    end
+    db.recordsPacked[#db.recordsPacked + 1] = entry
+end
+
+function DB:DropRecord(id)
+    local db = self.sv.db
+    for _, store in ipairs({ db.recordsPacked, db.records }) do
+        for i = #store, 1, -1 do if store[i].id == id then table.remove(store, i) end end
+    end
+end
+
+function DB:StorePlayer(key, e)
+    SBR.Realize(e)
+    self.sv.db.playersPacked[key] = { p = SBR.Pack(e), t = e.lastSeen, y = e.isYou or nil }
+    self.sv.db.players[key] = nil
+end
+
+-- lastSeen / isYou without unpacking the player
+function DB:PlayerMeta(key)
+    local st = self.sv.db.playersPacked[key]
+    if st then return Num(st.t), st.y == true end
+    local e = self.sv.db.players[key] or self.players[key]
+    if e then return Num(e.lastSeen), e.isYou == true end
+    return 0, false
+end
+
+function DB:DropPlayer(key)
+    self.players[key] = nil
+    self.sv.db.playersPacked[key] = nil
+    self.sv.db.players[key] = nil
+end
+
+-- Drop the players seen longest ago until the index fits maxPlayers. Returns true
+-- when nothing was dropped.
+function DB:TrimPlayers()
+    local max = SBR.sv.maxPlayers or 1000
+    local count, oldestKey, oldest = 0, nil, nil
+    for k in pairs(self.players) do
+        count = count + 1
+        local seen, isYou = self:PlayerMeta(k)
+        if not isYou and (not oldest or seen < oldest) then oldestKey, oldest = k, seen end
+    end
+    if count > max and oldestKey then
+        self:DropPlayer(oldestKey)
+        return false
+    end
+    return true
+end
+
+-- One background step (UI/MatchLog.lua): pack a few records / players that older
+-- versions saved as tables, then trim the player index. Returns true when done.
+local MIGRATE_CHUNK = 25
+function DB:MigrateStep()
+    local db = self.sv.db
+    if #db.records > 0 then
+        for _ = 1, MIGRATE_CHUNK do
+            local r = db.records[1]
+            if not r then break end
+            self:StoreRecord(r)
+        end
+        return false
+    end
+    if next(db.players) ~= nil then
+        for _ = 1, MIGRATE_CHUNK do
+            local k, e = next(db.players)
+            if not k then break end
+            self:StorePlayer(k, e)
+        end
+        return false
+    end
+    return self:TrimPlayers()
 end
 
 -- Where your row ranks in a match, by score.
@@ -107,6 +201,7 @@ end
 function DB:Add(match)
     local rec = self:Summarize(match)
     self:AddPlayers(match, rec)
+    self:StoreRecord(rec)
     for i, r in ipairs(self.records) do
         if r.id == rec.id then
             self.records[i] = rec
@@ -115,14 +210,17 @@ function DB:Add(match)
     end
     table.insert(self.records, rec)
     local max = SBR.sv.maxRecords or 500
-    while #self.records > max do table.remove(self.records, 1) end
+    while #self.records > max do
+        local old = table.remove(self.records, 1)
+        self:DropRecord(old.id)
+    end
     return rec
 end
 
 function DB:GetRecords() return self.records end
 
 function DB:FindMatch(id)
-    for i, m in ipairs(self.sv.history or {}) do
+    for i, m in ipairs(SBR.MatchLog:GetHistory()) do
         if m.id == id then return m, i end
     end
     return nil
@@ -303,15 +401,10 @@ function DB:AddPlayers(match, rec)
             e.abilities = {}
             for i = 1, 8 do e.abilities[list[i].name] = list[i].damage end
         end
+        self:StorePlayer(key, e)
     end
     -- cap the index, dropping the players seen longest ago
-    local max = SBR.sv.maxPlayers or 1000
-    local count, oldestKey, oldest = 0, nil, nil
-    for k, e in pairs(self.players) do
-        count = count + 1
-        if not e.isYou and (not oldest or Num(e.lastSeen) < oldest) then oldestKey, oldest = k, Num(e.lastSeen) end
-    end
-    if count > max and oldestKey then self.players[oldestKey] = nil end
+    self:TrimPlayers()
 end
 
 function DB:GetPlayer(key) return self.players[key] end
