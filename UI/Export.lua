@@ -235,6 +235,10 @@ function Reader:Create()
     local ok, bg = pcall(WM.CreateControlFromVirtual, WM, "$(parent)BG", tlw, "ZO_DefaultBackdrop_Gamepad")
     if not ok or not bg then bg = WM:CreateControlFromVirtual("$(parent)BG", tlw, "ZO_DefaultBackdrop") end
     bg:SetAnchorFill(tlw)
+    -- solid backing so the scoreboard behind doesn't show through the text
+    local solid = WM:CreateControl("$(parent)Solid", tlw, CT_TEXTURE)
+    solid:SetColor(0.02, 0.03, 0.04, 0.9)
+    solid:SetAnchorFill(tlw)
 
     local title = WM:CreateControl("$(parent)Title", tlw, CT_LABEL)
     title:SetFont(_G.ZoFontGamepadBold34 and "ZoFontGamepadBold34" or "ZoFontWinH2")

@@ -29,13 +29,13 @@ end
 
 local STYLES = {
     keyboard = {
-        pad = 14, topH = 84, headerH = 26, rowH = 24, footerH = 42, colScale = 1, detailsW = 340,
-        fontRow = Font("ZoFontGameMedium", "ZoFontGame"), fontHead = Font("ZoFontHeader", "ZoFontGameBold"),
+        pad = 14, topH = 84, headerH = 26, rowH = 24, footerH = 42, colScale = 1, detailsW = 340, detailsMaxH = 760,
+        fontRow = Font("ZoFontGameMedium", "ZoFontGame"), fontHead = Font("ZoFontGameSmall", "ZoFontGameBold"),
         fontTitle = Font("ZoFontWinH1", "ZoFontWinH2"), fontSub = "ZoFontGameSmall", fontTeams = Font("ZoFontWinH3", "ZoFontWinH4"),
         fontDetails = "ZoFontGameSmall", fontDetailsTitle = Font("ZoFontWinH3", "ZoFontWinH4"), iconSize = 22,
     },
     gamepad = {
-        pad = 20, topH = 104, headerH = 34, rowH = 34, footerH = 34, colScale = 1.35, detailsW = 470,
+        pad = 20, topH = 104, headerH = 34, rowH = 34, footerH = 34, colScale = 1.35, detailsW = 470, detailsMaxH = 790,
         fontRow = Font("ZoFontGamepad22", "ZoFontGame"),
         fontHead = Font("ZoFontGamepadBold22", "ZoFontGamepad22", "ZoFontGameBold"),
         fontTitle = Font("ZoFontGamepadBold34", "ZoFontGamepad34", "ZoFontWinH2"),
@@ -150,18 +150,19 @@ end
 ---------------------------------------------------------------------------
 -- Columns
 ---------------------------------------------------------------------------
--- gp = shown in gamepad mode too (the rest stays in the details pane there,
--- so the table fits a TV-distance font size)
+-- gp = shown in the gamepad table, kb = shown in the PC table. Everything else is in
+-- the details pane, so the table fits ESO's 1920 px canvas with the pane beside it
+-- (checked by rendering the add-on's layout at ESO's real font sizes).
 local FIGHT_COLUMNS = {
-    { key = "dps", label = "DPS", tip = "Damage per second in combat", gp = true },
-    { key = "hps", label = "HPS", tip = "Healing per second in combat", gp = true },
-    { key = "damageTaken", label = "Taken", tip = "Damage taken", gp = true },
-    { key = "healingTaken", label = "Healed", tip = "Healing received" },
-    { key = "killingBlows", label = "KBs", tip = "Killing blows", gp = true },
+    { key = "dps", label = "DPS", tip = "Damage per second in combat", gp = true, kb = true },
+    { key = "hps", label = "HPS", tip = "Healing per second in combat", gp = true, kb = true },
+    { key = "damageTaken", label = "Taken", tip = "Damage taken", gp = true, kb = true },
+    { key = "healingTaken", label = "Healed", tip = "Healing received", kb = true },
+    { key = "killingBlows", label = "KBs", tip = "Killing blows", gp = true, kb = true },
     { key = "interrupts", label = "Intr", tip = "Interrupts" },
-    { key = "ccApplied", label = "CC", tip = "Crowd control applied" },
+    { key = "ccApplied", label = "CC", tip = "Crowd control applied", kb = true },
     { key = "damageShielded", label = "Shield", tip = "Damage absorbed by shields" },
-    { key = "critRate", label = "Crit%", tip = "Critical hit rate", fmt = function(v) return string.format("%.0f%%", v) end },
+    { key = "critRate", label = "Crit%", tip = "Critical hit rate", kb = true, fmt = function(v) return string.format("%.0f%%", v) end },
     { key = "maxHit", label = "Max hit", tip = "Biggest single hit" },
 }
 
@@ -224,7 +225,7 @@ function UI:BuildColumns(match)
 
     if SBR.sv.showFightColumns then
         for _, fc in ipairs(FIGHT_COLUMNS) do
-            if fc.gp or not gamepad then
+            if (gamepad and fc.gp) or (not gamepad and fc.kb) then
                 local key = fc.key
                 local get = function(p) return p.fight and p.fight[key] end
                 if AnyValue(players, get) then
@@ -671,8 +672,11 @@ function UI:RefreshDetails()
     if p.isLocal then title = title .. "  |c" .. Colors().normalHex .. "(you)|r" end
     self.detailsTitle:SetText(title)
     self.detailsBody:SetText(self:PlayerDetailsText(p))
+    -- capped so the pane never runs into the gamepad keybind strip; longer text is cut
     local h = self.detailsBody:GetTextHeight() + s.rowH + s.pad * 2 + 10
-    self.details:SetHeight(math.max(h, 120))
+    h = zo_clamp(h, 120, s.detailsMaxH)
+    self.details:SetHeight(h)
+    self.detailsBody:SetHeight(h - (s.rowH + s.pad * 2 + 10))
 
     -- put the pane on whichever side of the panel has room
     local pane, tlw = self.details, self.control

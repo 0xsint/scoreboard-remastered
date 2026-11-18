@@ -132,8 +132,8 @@ function GP:BuildKeybinds()
         },
         {
             name = function()
-                if ReaderOpen() then return "Close kill feed" end
-                return W.detailsOpen and "Close details" or "Close"
+                if ReaderOpen() then return "Close" end
+                return "Back"
             end,
             keybind = "UI_SHORTCUT_NEGATIVE",
             callback = function()
@@ -148,7 +148,7 @@ function GP:BuildKeybinds()
             end,
         },
         {
-            name = function() return W.sort.desc and "Sort: high to low" or "Sort: low to high" end,
+            name = "Sort order",
             keybind = "UI_SHORTCUT_SECONDARY",
             callback = function() W:ToggleSortOrder() end,
             visible = table_,
@@ -163,25 +163,25 @@ function GP:BuildKeybinds()
             visible = table_,
         },
         {
-            name = "Previous match",
+            name = "Older",
             keybind = "UI_SHORTCUT_LEFT_SHOULDER",
             callback = function() W:Step(-1) end,
             visible = function() return table_() and #SBR.MatchLog:GetHistory() > 0 end,
         },
         {
-            name = "Next match",
+            name = "Newer",
             keybind = "UI_SHORTCUT_RIGHT_SHOULDER",
             callback = function() W:Step(1) end,
             visible = function() return table_() and W.viewIndex ~= nil end,
         },
         {
-            name = "Battleground records",
+            name = "Records",
             keybind = "UI_SHORTCUT_RIGHT_STICK",
             callback = function() SBR.MatchBrowser:Open() end,
             visible = table_,
         },
         {
-            name = function() return SBR.sv.groupByTeam and "By team: on" or "By team: off" end,
+            name = function() return SBR.sv.groupByTeam and "Ungroup" or "Group" end,
             keybind = "UI_SHORTCUT_LEFT_STICK",
             callback = function() W:ToggleGroupByTeam() end,
             visible = table_,

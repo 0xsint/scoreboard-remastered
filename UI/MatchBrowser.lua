@@ -23,7 +23,7 @@ local MB = {
 SBR.MatchBrowser = MB
 
 local WM = WINDOW_MANAGER
-local VISIBLE_ROWS = 8
+local VISIBLE_ROWS = 7 -- keeps the dialog above the gamepad keybind strip (128 px)
 local ROWS_TOP = 200
 local ROW_H = 86
 local LIST_W = 760
@@ -530,7 +530,8 @@ function MB:SetTile(i, key, value, label, badge)
     local rgb = TILE_COLORS[key] or GOLD
     Paint(t.accent, rgb)
     t.badge:SetColor(rgb[1], rgb[2], rgb[3], 0.22)
-    t.badgeText:SetText(badge or "")
+    -- the text badge is only a fallback for a missing icon
+    t.badgeText:SetText(ICONS[key] and "" or (badge or ""))
     t.icon:SetTexture(ICONS[key] or "")
     t.icon:SetHidden(ICONS[key] == nil)
     t.value:SetText(value)
@@ -738,7 +739,10 @@ function MB:RenderPlayers()
             if e.isYou then
                 row.kda:SetText(string.format("%d / %d / %d", e.kills, e.deaths, e.assists))
             else
-                row.kda:SetText(string.format("With %d  •  Vs %d", e.withMatches, e.againstMatches))
+                local parts = {}
+                if e.withMatches > 0 then parts[#parts + 1] = "With " .. e.withMatches end
+                if e.againstMatches > 0 then parts[#parts + 1] = "Vs " .. e.againstMatches end
+                row.kda:SetText(table.concat(parts, "  •  "))
             end
             Paint(row.kda, selected and WHITE or { 0.80, 0.80, 0.80 })
             local tail = e.killedYou > 0 and string.format("  •  killed you %d", e.killedYou) or ""

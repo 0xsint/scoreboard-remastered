@@ -1,9 +1,48 @@
 # Scoreboard Remastered (ESO)
 
 An Elder Scrolls Online add-on that remasters the battleground scoreboard. It opens
-next to the native scoreboard, logs everything the native scoreboard tracks, adds fight
-data from **LibFights** (with a built-in combat-log fallback), and keeps a saved history
-of your matches.
+over the native scoreboard, logs everything the native scoreboard tracks, adds fight
+data for every player (your own from **LibFights**, everyone else from a per-player
+combat ledger), and keeps a database of every match and every player you've met. That
+database opens from the inventory, anywhere in the game.
+
+## Screenshots (simulated)
+
+> These are **renders of the add-on's own UI code, not in-game captures.** The add-on ran
+> through eight simulated battlegrounds in a stand-in ESO client. Every control it built
+> was recorded and laid out with ESO's anchor rules on ESO's 1920×1080 UI canvas, using ESO's
+> real font sizes and colours. See [How the screenshots are made](#how-the-screenshots-are-made)
+> for what is exact and what is approximated.
+
+**PC: the panel over the battleground scoreboard, with the selected player's details**
+![PC scoreboard](docs/screenshots/pc-scoreboard.jpg)
+
+**Gamepad / console: "Open Remastered" on the battleground scoreboard's button bar**
+![Open Remastered on the native scoreboard](docs/screenshots/gamepad-native.jpg)
+
+**Gamepad: Scoreboard Remastered, a player's details open with A / Cross**
+![Gamepad scoreboard](docs/screenshots/gamepad-scoreboard.jpg)
+
+**Gamepad: kill feed with death recaps (Y / Triangle)**
+![Kill feed](docs/screenshots/gamepad-killfeed.jpg)
+
+**Battleground records: Matches tab**
+![Records, matches](docs/screenshots/records-matches.jpg)
+
+**Battleground records: lifetime stats**
+![Records, lifetime](docs/screenshots/records-lifetime.jpg)
+
+**Battleground records: Players tab (opponents sorted by who killed you most)**
+![Records, players](docs/screenshots/records-players.jpg)
+
+**Gamepad inventory: Battleground records on the button bar**
+![Gamepad inventory](docs/screenshots/gamepad-inventory.jpg)
+
+**PC inventory: the Battleground records button**
+![PC inventory](docs/screenshots/pc-inventory.jpg)
+
+**PC: Battleground records with the mouse**
+![PC records](docs/screenshots/pc-records.jpg)
 
 ## Install
 
@@ -41,7 +80,8 @@ Fight data for **every player on the scoreboard**:
   killing blows, interrupts, CC applied and taken, shields absorbed, damage blocked, and top
   damage and heal abilities. It uses LibFights' own result categories, so both sources agree
   on what counts as damage, healing or CC.
-- **You vs each player:** damage each way, healing each way, and kills each way.
+- **You vs each player:** damage each way, healing each way, and kills each way. These are in
+  every player's details pane; on PC they can also be shown as table columns (setting).
 - **Death recaps for every kill** in the kill feed: the last hits the victim took before dying.
   Your own deaths also get LibFights' full recap.
 - **A fight list** for the match (LibFights): title, duration, DPS, damage, healing, KBs and deaths.
@@ -65,8 +105,10 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 
 ### PC with mouse and keyboard
 
-- The panel opens and closes with the native battleground scoreboard and anchors
-  to its right side. Drag it to give it a fixed position (`/sbr reset` undoes this).
+- The panel opens and closes with the native battleground scoreboard. By default it sits
+  **over** the board on a dimmed backdrop, because ESO's board is about 1300 px wide and
+  there's no room beside it. `/sbr attach right|left|below` places it next to the board
+  instead (kept on screen). Drag it to give it a fixed position (`/sbr reset` undoes this).
 - **Click a row** to open its details beside the panel: medals, every fight stat, top
   abilities and the you-vs-them breakdown. Click the row again, or the X, to close.
 - Click a column header to sort. Hover a header to see what it measures.
@@ -154,7 +196,7 @@ Sorts: most seen, last seen, kills, damage, healing, times they killed you, name
 | `/sbr history [n]` | list saved matches / open match *n* |
 | `/sbr live` | back to the live match |
 | `/sbr db`, `/sbr players` | battleground records (matches / players tab) |
-| `/sbr attach right\|left\|below\|free`, `/sbr reset` | positioning |
+| `/sbr attach over\|right\|left\|below\|free`, `/sbr reset` | positioning |
 | `/sbr status` | LibFights state and the score types detected |
 | `/sbr hooks` | which native scoreboard scenes/fragments were hooked |
 | `/sbr clear`, `/sbr debug` | clear history, toggle debug output |
@@ -187,6 +229,58 @@ LibFights drops fights shorter than its `minFightSeconds` (2s by default), so
 very short skirmishes don't count toward the fight stats. The native scoreboard
 columns are unaffected.
 
+## How the screenshots are made
+
+`tools/simulate.lua` runs the add-on and the real LibFights library in a stand-in ESO
+client, plays eight battlegrounds, then drives each screen. Its control mock records
+every call the add-on makes (`SetAnchor`, `SetDimensions`, `SetFont`, `SetColor`,
+`SetText`, `SetTexture`, `SetHidden` and so on). `tools/render.js` lays those controls
+out with ESO's anchor rules and draws them in a headless browser.
+
+| | |
+|---|---|
+| **Exact** | Layout: positions and sizes come from the add-on's own code, on ESO's 1920×1080 UI canvas. All text and numbers come from the add-on's real output. Font **sizes** come from ESO's font definitions (`EsoUI/FontDefs`, western strings), for example `ZoFontGamepad34` = 34 px and `ZoFontWinH1` = 30 px. Colours are what the add-on sets, including ESO's stock text colours (`ZO_NORMAL_TEXT` C5C29E, `ZO_SELECTED_TEXT` FFFFFF). The gamepad button bar follows `KEYBIND_STRIP_GAMEPAD_STYLE`: ZoFontGamepad34, uppercase, 96 px insets, 53 px from the bottom, 128 px background. Native positions also come from ESO's XML: the inventory window (565 px wide on the 575×750 right panel), the gamepad inventory panel (x 56–526) and the battleground board (~1124×810, centred). |
+| **Approximated** | Font **faces**: ESO uses Univers 57/67 (keyboard) and Futura Condensed 47/57/87 (gamepad), which are licensed, so the renders use Barlow Semi Condensed and Barlow Condensed. ESO's art isn't redistributable, so backdrops, highlights and class, medal and ability icons are drawn as stand-ins. |
+| **Stand-ins** | Anything ESO itself draws (the 3D world, the native battleground scoreboard, both inventories, the PC keybind strip) is simplified and labelled in the image. Only the add-on's controls are rendered from its code. |
+
+Rendering the real layout at ESO's real font sizes found layout bugs that are now fixed:
+- The PC panel was wider than the screen.
+- Column headers were truncated.
+- The details pane and the records dialog ran into the gamepad button bar.
+- The stat tiles drew their text badge over the icon.
+- The gamepad button labels were too long for ESO's strip.
+
+## Checked against the ESO UI source
+
+The add-on was checked against ZeniMax's published UI source and API documentation
+(esoui/esoui, API 101051). That covers every game function, event, constant, font,
+control template, texture path and scene name it uses. Fixed as a result:
+
+- **Team scores:** `GetCurrentBattlegroundScore` takes `(roundIndex, team)`.
+- **Medals:** they are read through `GetNextScoreboardEntryMedalId` and, for whole-match
+  totals, the cumulative medal API, exactly like ESO's own medal panel. The medal
+  functions guessed earlier don't exist.
+- **Class icons:** `ZO_GetClassIcon` (`GetClassIcon` is a PC-only alias).
+- **Names and modes:** team names use `GetBattlegroundTeamName`, the game type uses
+  `GetCurrentBattlegroundGameType`, and multi-round matches are decided by rounds won.
+- **Gamepad "Open Remastered" button:** ESO's battleground scoreboard doesn't push the
+  UI shortcut key layer, so the button could never fire. The add-on now pushes that layer
+  while the scoreboard is open. Keys no button claims still pass through to the game.
+- **PC records screen:** it uses `FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW` (cursor,
+  keybind strip, shortcut layer).
+- **Stat-tile icons:** three icon paths didn't exist. They're replaced with art the game's
+  UI references.
+- **PC panel placement:** the native scoreboard's top level fills the screen, so
+  "attach right" was off screen. The default is now "over", and the side placements
+  measure against the visible board.
+
+### Regenerating the simulation and screenshots
+
+```sh
+lua5.1 tools/simulate.lua . <path-to>/LibFights out/match.json out/screens.json
+node tools/render.js out/screens.json docs/screenshots   # needs Playwright + Chromium
+```
+
 ## Notes
 
 - The combat ledger is saved with the in-progress match, so `/reloadui` mid-match keeps
@@ -206,5 +300,5 @@ columns are unaffected.
   and stock list textures (row highlight, selected highlight, divider, sort arrows from
   `EsoUI/Art/Miscellaneous/`). Each texture sits on top of a plain colour, so if a path
   changes in a game update the panel still reads correctly, just with less polish.
-- Update `## APIVersion` in `ScoreboardRemastered.addon` to the current client
-  (`/script d(GetAPIVersion())`).
+- `## APIVersion` is set to 101051, the API version of the ESO UI source the add-on was
+  checked against. Update it if your client differs (`/script d(GetAPIVersion())`).
