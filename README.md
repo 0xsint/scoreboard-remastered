@@ -234,6 +234,15 @@ after each match**). It also opens with A / double-click on a match in the recor
   XP, Champion Points, medals, Alliance rank, and a rank-up), your title, your medals,
   and your profile against the best player in each category.
 
+**Sharp at any size.** Bars, backgrounds, banners and chart bars are drawn as plain
+shapes with smooth colour gradients (`SetVertexColors`) instead of stretched textures,
+so they stay sharp at any resolution and UI scale. Icons are never drawn larger than
+their file. Large icons use the game's gamepad files, which are the high-resolution
+ones: team emblems, class icons, stat and title icons, and the AP currency icon.
+Keyboard-size icons are kept at 40 px or less. The percentage bars have a dark track,
+a gradient fill, a highlight and quarter tick marks, with the value beside them, and
+they all fit inside the panel.
+
 It's drawn with the game's own battleground art rather than text where it can be: your
 team's emblem and win / loss banner across the header, the round-recap header art,
 each team's scoreboard background and emblem on its card, the capture-bar fills (in

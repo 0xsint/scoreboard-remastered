@@ -298,9 +298,27 @@ local BG_ART = "EsoUI/Art/Battlegrounds/"
 function SBR.TeamArt(id, kind, won)
     local c = SBR.TeamArtColor(id)
     if kind == "emblem" then return BG_ART .. "battlegrounds_teamIcon_" .. c .. ".dds" end
+    -- the gamepad emblem is the larger file: use it for anything drawn over ~40 px
+    if kind == "emblemLarge" then return BG_ART .. "Gamepad/gp_battlegrounds_teamIcon_" .. c .. ".dds" end
     if kind == "fill" then return BG_ART .. "battlegroundsCaptureBar_fill_" .. c .. ".dds" end
     if kind == "background" then return BG_ART .. "battlegrounds_scoreboardBG_" .. c .. ".dds" end
     if kind == "strip" then return BG_ART .. "battlegrounds_scoreboard_highlightStrip_" .. c .. ".dds" end
     if kind == "point" then return BG_ART .. "battlegroundsCaptureBar_point_" .. c .. ".dds" end
     if kind == "banner" then return BG_ART .. "battleground_banner_" .. c .. (won and "_win" or "_loss") .. ".dds" end
+end
+
+-- A smooth two-colour gradient on an untextured texture control (SetVertexColors).
+-- Crisp at any size, unlike stretched art. horizontal: a = left, b = right;
+-- otherwise a = top, b = bottom. Colours are { r, g, b, alpha }.
+function SBR.Gradient(tex, a, b, horizontal)
+    local TL, TR, BL, BR = VERTEX_POINTS_TOPLEFT, VERTEX_POINTS_TOPRIGHT, VERTEX_POINTS_BOTTOMLEFT, VERTEX_POINTS_BOTTOMRIGHT
+    if not (tex.SetVertexColors and TL) then
+        tex:SetColor(a[1], a[2], a[3], a[4])
+        return tex
+    end
+    tex:SetColor(1, 1, 1, 1)
+    local first, second = horizontal and (TL + BL) or (TL + TR), horizontal and (TR + BR) or (BL + BR)
+    tex:SetVertexColors(first, a[1], a[2], a[3], a[4])
+    tex:SetVertexColors(second, b[1], b[2], b[3], b[4])
+    return tex
 end

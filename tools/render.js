@@ -169,6 +169,8 @@ function pageMain(screen, native, FONTS, FACES) {
       [/Icon_Experience/, '<path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" fill="#5f8f3e" stroke="#c9f0a0"/><path d="M8 8h8M8 11h8M8 14h5" stroke="#eaffd0"/>'],
       [/champion_points_health/, '<path d="M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z" fill="#5fb06a" stroke="#d8ffd0"/>'],
       [/champion_icon/, '<path d="M12 2l2.6 6.4L21 9l-5 4.3L17.6 20 12 16.6 6.4 20 8 13.3 3 9l6.4-.6z" fill="#e8b84a" stroke="#fff1c4"/>'],
+      [/flaggames/, '<path d="M6 21V3" stroke="#e9d9a8"/><path d="M6 4h11l-2.5 4L17 12H6z" fill="#c9503a" stroke="#ffd0b0"/>'],
+      [/icon_achievements/, '<path d="M8 2h8l-1 6H9z" fill="#b04a3a"/><circle cx="12" cy="14" r="7" fill="#d9a838" stroke="#fff1c4"/><path d="M12 10l1.4 2.8 3 .4-2.2 2.1.5 3-2.7-1.5-2.7 1.5.5-3-2.2-2.1 3-.4z" fill="#fff6dc"/>'],
       [/achievements_reward/, '<path d="M8 2h8l-1 6H9z" fill="#b04a3a"/><circle cx="12" cy="14" r="7" fill="#d9a838" stroke="#fff1c4"/><path d="M12 10l1.4 2.8 3 .4-2.2 2.1.5 3-2.7-1.5-2.7 1.5.5-3-2.2-2.1 3-.4z" fill="#fff6dc"/>'],
       [/glyphSlot_shield/, '<path d="M12 2l8 3v6c0 5.5-3.6 9.3-8 11-4.4-1.7-8-5.5-8-11V5z" fill="#6f8fb0" stroke="#e0f0ff"/><path d="M12 6v12" stroke="#e0f0ff"/>'],
       [/currency_|currency\//i, '<circle cx="12" cy="12" r="9" fill="#3d6fb0" stroke="#cfe6ff"/><path d="M8 15l4-8 4 8M9.5 12.5h5" stroke="#fff" fill="none"/>'],
@@ -275,7 +277,13 @@ function pageMain(screen, native, FONTS, FACES) {
     } else if (n.kind === "texture") {
       const p = n.texture || "";
       const col = rgba(c, a);
-      if (!p) el(r, `background:${col}`);
+      if (!p && n.vc && n.vc.tl && n.vc.br) {
+        // SetVertexColors: a smooth gradient between the corner colours
+        const v = n.vc, k = x => `rgba(${Math.round(x[0] * 255)},${Math.round(x[1] * 255)},${Math.round(x[2] * 255)},${x[3] * a})`;
+        const horizontal = JSON.stringify(v.tl) === JSON.stringify(v.bl);
+        el(r, `background:linear-gradient(${horizontal ? "90deg" : "180deg"},${k(v.tl)},${k(horizontal ? v.tr : v.bl)})`);
+      }
+      else if (!p) el(r, `background:${col}`);
       else if (/listItem_selectedHighlight/.test(p)) el(r, `background:linear-gradient(90deg,rgba(255,220,130,${.55 * a}),rgba(255,210,110,${.22 * a}) 55%,rgba(255,210,110,0));box-shadow:inset 0 1px 0 rgba(255,225,150,${.5 * a}),inset 0 -1px 0 rgba(255,225,150,${.35 * a})`);
       else if (/listItem_highlight/.test(p)) el(r, `background:linear-gradient(90deg,rgba(255,255,255,${.28 * a}),rgba(255,255,255,${.12 * a}) 55%,rgba(255,255,255,0))`);
       else if (/horizontalDivider/.test(p)) el({ x: r.x, y: r.y + r.h / 2 - 1, w: r.w, h: 2 }, `background:linear-gradient(90deg,transparent,rgba(197,194,158,${.75 * a}) 20%,rgba(255,250,230,${.9 * a}) 50%,rgba(197,194,158,${.75 * a}) 80%,transparent)`);

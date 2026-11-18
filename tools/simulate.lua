@@ -86,7 +86,14 @@ function M:GetWidth() return self._w or (self == GuiRoot and 1920) or 0 end
 function M:GetHeight() return self._h or (self == GuiRoot and 1080) or 0 end
 function M:SetHidden(v) self._hidden = v and true or false end
 function M:IsHidden() return self._hidden end
-function M:SetColor(r, g, b, a) self._color = { r or 1, g or 1, b or 1, a or 1 } end
+function M:SetColor(r, g, b, a) self._color = { r or 1, g or 1, b or 1, a or 1 }; self._vc = nil end
+VERTEX_POINTS_TOPLEFT, VERTEX_POINTS_TOPRIGHT, VERTEX_POINTS_BOTTOMLEFT, VERTEX_POINTS_BOTTOMRIGHT = 1, 2, 4, 8
+function M:SetVertexColors(points, r, g, b, a)
+    self._vc = self._vc or {}
+    for _, v in ipairs({ 1, 2, 4, 8 }) do
+        if points % (v * 2) >= v then self._vc[v] = { r, g, b, a } end
+    end
+end
 function M:SetAlpha(a) self._alpha = a end
 function M:SetText(v) self._text = v end
 function M:GetText() return self._text end
@@ -1114,7 +1121,7 @@ if SCREENS_OUT then
     local function serialize(c)
         local node = { id = c._id, name = c._name, kind = c._kind, virtual = c._virtual, hidden = c._hidden,
             w = c._w, h = c._h, color = c._color, alpha = c._alpha, text = c._text, font = c._font,
-            halign = c._halign, valign = c._valign, texture = c._texture, upper = c._upper, wrap = c._wrap, scale = c._scale,
+            halign = c._halign, valign = c._valign, texture = c._texture, vc = c._vc and { tl = c._vc[1], tr = c._vc[2], bl = c._vc[4], br = c._vc[8] } or nil, upper = c._upper, wrap = c._wrap, scale = c._scale,
             anchors = {}, children = {} }
         for _, a in ipairs(c._anchors) do
             node.anchors[#node.anchors + 1] = { a[1], a[2] and a[2]._id or GuiRoot._id, a[3], a[4], a[5] }

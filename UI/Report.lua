@@ -34,27 +34,25 @@ local DIM, WHITE, GOLD, NORMAL = { 0.60, 0.60, 0.62 }, { 1, 1, 1 }, { 0.95, 0.82
 ---------------------------------------------------------------------------
 local ART = "EsoUI/Art/Battlegrounds/"
 local function TeamArtColor(id) return SBR.TeamArtColor(id) end
-local function TeamEmblem(id) return ART .. "battlegrounds_teamIcon_" .. TeamArtColor(id) .. ".dds" end
-local function TeamFill(id) return ART .. "battlegroundsCaptureBar_fill_" .. TeamArtColor(id) .. ".dds" end
-local function TeamCardBG(id) return ART .. "battlegrounds_scoreboardBG_" .. TeamArtColor(id) .. ".dds" end
-local function TeamStrip(id) return ART .. "battlegrounds_scoreboard_highlightStrip_" .. TeamArtColor(id) .. ".dds" end
+local function TeamEmblem(id) return SBR.TeamArt(id, "emblemLarge") end
 local function TeamPoint(id) return ART .. "battlegroundsCaptureBar_point_" .. TeamArtColor(id) .. ".dds" end
-local function Banner(id, won) return ART .. "battleground_banner_" .. TeamArtColor(id) .. (won and "_win" or "_loss") .. ".dds" end
 
+-- Icons are never drawn larger than their file (that's what looked pixelated): the
+-- gamepad versions are the larger files and are used wherever an icon is big.
 local ICON = {
-    overview = "EsoUI/Art/Campaign/overview_indexIcon_scoring_up.dds",
+    overview = "EsoUI/Art/Campaign/Gamepad/gp_overview_menuIcon_scoring.dds",
     timeline = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_competitive.dds",
-    you = "EsoUI/Art/Champion/champion_icon.dds",
+    you = "EsoUI/Art/Champion/Gamepad/gp_champion_icon.dds",
     kills = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_deathmatch.dds",
     deaths = "EsoUI/Art/DeathRecap/deathRecap_killingBlow_icon.dds",
-    assists = "EsoUI/Art/Campaign/overview_indexIcon_bonus_up.dds",
+    assists = "EsoUI/Art/Campaign/Gamepad/gp_overview_menuIcon_bonus.dds",
     damage = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_competitive.dds",
     healing = "EsoUI/Art/Champion/champion_points_health_icon.dds",
-    score = "EsoUI/Art/Campaign/overview_indexIcon_scoring_up.dds",
+    score = "EsoUI/Art/Campaign/Gamepad/gp_overview_menuIcon_scoring.dds",
     medals = "EsoUI/Art/Achievements/achievements_reward_earned.dds",
     xp = "EsoUI/Art/Icons/Icon_Experience.dds",
-    cp = "EsoUI/Art/Champion/champion_icon.dds",
-    shield = "EsoUI/Art/Crafting/crafting_enchanting_glyphSlot_shield.dds",
+    cp = "EsoUI/Art/Champion/Gamepad/gp_champion_icon.dds",
+    shield = "EsoUI/Art/Crafting/Gamepad/gp_crafting_enchanting_glyphSlot_shield.dds",
     glow = "EsoUI/Art/Miscellaneous/lensflare_burst_512.dds",
     frame = "EsoUI/Art/Miscellaneous/progressbar_frame.dds",
     frameBG = "EsoUI/Art/Miscellaneous/progressbar_frame_bg.dds",
@@ -65,14 +63,22 @@ local ICON = {
 -- a title's icon (Data/Report.lua titles)
 local TITLE_ICON = {
     Slayer = ICON.kills, Vanguard = ICON.damage, Lifeline = ICON.healing, Wingman = ICON.assists,
-    ["Objective runner"] = "point", Medalist = ICON.medals, Unbreakable = ICON.shield,
+    ["Objective runner"] = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_flaggames.dds",
+    Medalist = "EsoUI/Art/MenuBar/Gamepad/gp_playerMenu_icon_achievements.dds", Unbreakable = ICON.shield,
 }
 local function TitleIcon(title, team)
     local i = TITLE_ICON[title]
     if i == "point" then return TeamPoint(team) end
     return i
 end
-local function APIcon() return SBR.API("GetCurrencyKeyboardIcon", CURT_ALLIANCE_POINTS) or "EsoUI/Art/currency/currency_gold.dds" end
+local function APIcon()
+    return SBR.API("GetCurrencyGamepadIcon", CURT_ALLIANCE_POINTS) or SBR.API("GetCurrencyKeyboardIcon", CURT_ALLIANCE_POINTS)
+        or "EsoUI/Art/currency/gamepad/gp_gold.dds"
+end
+-- a player's class icon: the large (gamepad) file when the class is known
+local function ClassIcon(p)
+    return (p.classId and SBR.API("ZO_GetGamepadClassIcon", p.classId)) or p.classIcon
+end
 
 local function Num(v) return type(v) == "number" and v or 0 end
 local function N(v) return v == nil and "-" or SBR.FormatNumber(v) end
@@ -194,12 +200,16 @@ function RP:Create()
 
     -- header: your team's win / loss banner across the top, the round-recap header
     -- art behind the result, your team's emblem, result, map and details
-    self.bannerArt = Tex(panel, 1, 1, 1, 0.55)
-    self.bannerArt:SetDimensions(PANEL_W - 4, 170)
+    -- gradients, not stretched art: they stay sharp at any size
+    self.bannerArt = Tex(panel, 1, 1, 1, 1)
+    self.bannerArt:SetDimensions(PANEL_W - 4, 190)
     self.bannerArt:SetAnchor(TOPLEFT, panel, TOPLEFT, 2, 2)
-    self.headerArt = Tex(panel, 1, 1, 1, 0.9)
-    self.headerArt:SetDimensions(720, 90)
-    self.headerArt:SetAnchor(TOPLEFT, panel, TOPLEFT, PAD + 86, 22)
+    self.bannerEdge = Tex(panel, 1, 1, 1, 1)
+    self.bannerEdge:SetDimensions(PANEL_W - 4, 4)
+    self.bannerEdge:SetAnchor(TOPLEFT, panel, TOPLEFT, 2, 2)
+    self.headerArt = Tex(panel, 1, 1, 1, 1)
+    self.headerArt:SetDimensions(760, 72)
+    self.headerArt:SetAnchor(TOPLEFT, panel, TOPLEFT, PAD + 120, 26)
     self.emblemGlow = Tex(panel, 1, 1, 1, 0.55, ICON.glow)
     self.emblemGlow:SetDimensions(210, 210)
     self.emblemGlow:SetAnchor(CENTER, panel, TOPLEFT, PAD + 56, 92)
@@ -234,14 +244,18 @@ function RP:Create()
     self.balanceRight = Tex(panel, 1, 1, 1, 1)
     self.balanceRight:SetDimensions(64, 64)
     self.balanceRight:SetAnchor(TOPRIGHT, panel, TOPLEFT, bx + 470, 70)
-    self.balanceTrack = Tex(panel, 1, 1, 1, 0.9, ICON.frameBG)
-    self.balanceTrack:SetDimensions(470, 22)
-    self.balanceTrack:SetAnchor(TOPLEFT, panel, TOPLEFT, bx, 154)
-    self.balanceFill = Tex(panel, 1, 1, 1, 1, ART .. "battlegroundsCaptureBar_fill_green.dds")
-    self.balanceFill:SetAnchor(LEFT, self.balanceTrack, LEFT, 3, 0)
-    self.balanceFill:SetHeight(14)
-    self.balanceFrame = Tex(panel, 1, 1, 1, 1, ICON.frame)
-    self.balanceFrame:SetAnchorFill(self.balanceTrack)
+    self.balanceBorder = Tex(panel, 1, 1, 1, 0.18)
+    self.balanceBorder:SetDimensions(470, 16)
+    self.balanceBorder:SetAnchor(TOPLEFT, panel, TOPLEFT, bx, 156)
+    self.balanceTrack = Tex(panel, 0, 0, 0, 0.75)
+    self.balanceTrack:SetDimensions(468, 14)
+    self.balanceTrack:SetAnchor(CENTER, self.balanceBorder, CENTER, 0, 0)
+    self.balanceFill = Tex(panel, 1, 1, 1, 1)
+    self.balanceFill:SetAnchor(LEFT, self.balanceTrack, LEFT, 1, 0)
+    self.balanceFill:SetHeight(12)
+    self.balanceShine = Tex(panel, 1, 1, 1, 0.22)
+    self.balanceShine:SetAnchor(TOPLEFT, self.balanceFill, TOPLEFT, 0, 0)
+    self.balanceShine:SetHeight(3)
 
     -- tabs with icons
     self.tabs = {}
@@ -299,31 +313,62 @@ end
 
 local function Box(self, rgb, a, w, h)
     local b = self.boxes:Get()
-    b:SetColor(rgb[1], rgb[2], rgb[3], a or 1)
+    local c = { rgb[1], rgb[2], rgb[3], a or 1 }
+    SBR.Gradient(b, c, c) -- also clears a gradient left from the box's last use
     b:SetDimensions(math.max(0, w), math.max(0, h))
     return b
 end
 
+-- a gradient box: from colour a ({ r, g, b, alpha }) to b, left to right or top to bottom
+local function Grad(self, a, b, w, h, horizontal)
+    local t = self.boxes:Get()
+    SBR.Gradient(t, a, b, horizontal)
+    t:SetDimensions(math.max(0, w), math.max(0, h))
+    return t
+end
+
+-- Keyboard-size icon files are small: drawing one bigger than this makes it blurry,
+-- so it's kept at this size (the gamepad files, glows and game icons are larger).
+local SMALL_ICON_MAX = 40
+local function IsLargeFile(path)
+    return path:find("/Gamepad/", 1, true) or path:find("lensflare", 1, true) or not path:find("^EsoUI/Art/")
+        or path:find("/Icons/", 1, true) or path:find("[Mm]edal")
+end
 local function Art(self, path, w, h, rgb, a)
     local t = self.arts:Get()
+    path = path or ICON.score
+    if not IsLargeFile(path) and (w > SMALL_ICON_MAX or h > SMALL_ICON_MAX) then
+        local k = SMALL_ICON_MAX / math.max(w, h)
+        w, h = math.floor(w * k), math.floor(h * k)
+    end
     t:SetTexture(path)
     t:SetColor(rgb and rgb[1] or 1, rgb and rgb[2] or 1, rgb and rgb[3] or 1, a or 1)
     t:SetDimensions(math.max(0, w), math.max(0, h))
     return t
 end
 
--- a framed progress bar filled with a team's capture-bar art
-local function Bar(self, anchorTo, point, relPoint, x, y, w, share, fillPath, rgb)
-    local track = Art(self, ICON.frameBG, w, 20)
-    track:SetAnchor(point, anchorTo, relPoint, x, y)
+-- A percentage bar drawn with plain shapes (no stretched art): a dark track with a
+-- thin border, a gradient fill in the given colour from 0 to `share` of the width,
+-- a highlight along its top, and quarter tick marks so it reads as a scale.
+local function Bar(self, anchorTo, point, relPoint, x, y, w, share, rgb)
+    local h = 22
+    local border = Box(self, { 1, 1, 1 }, 0.18, w, h)
+    border:SetAnchor(point, anchorTo, relPoint, x, y)
+    local track = Box(self, { 0, 0, 0 }, 0.75, w - 2, h - 2)
+    track:SetAnchor(CENTER, border, CENTER, 0, 0)
     share = math.max(0, math.min(1, Num(share)))
     if share > 0 then
-        local fill = Art(self, fillPath, (w - 6) * share, 12, rgb)
-        fill:SetAnchor(LEFT, track, LEFT, 3, 0)
+        local fw = math.max(2, (w - 4) * share)
+        local fill = Grad(self, { rgb[1] * 0.6, rgb[2] * 0.6, rgb[3] * 0.6, 1 }, { rgb[1], rgb[2], rgb[3], 1 }, fw, h - 4, true)
+        fill:SetAnchor(LEFT, track, LEFT, 1, 0)
+        local shine = Box(self, { 1, 1, 1 }, 0.22, fw, 3)
+        shine:SetAnchor(TOPLEFT, fill, TOPLEFT, 0, 0)
     end
-    local frame = Art(self, ICON.frame, w, 20)
-    frame:SetAnchor(CENTER, track, CENTER, 0, 0)
-    return track
+    for q = 1, 3 do
+        local tick = Box(self, { 1, 1, 1 }, 0.16, 1, h - 6)
+        tick:SetAnchor(LEFT, track, LEFT, math.floor((w - 2) * q / 4), 0)
+    end
+    return border
 end
 
 -- icon + value (+ caption under it)
@@ -356,8 +401,10 @@ function RP:Render()
     local res = RESULT[m.result] or RESULT.unknown
     local mine = m.localTeam or SortedTeams(m)[1]
     local won = m.result == "won" or m.result == "tie"
-    self.bannerArt:SetTexture(Banner(mine, won))
-    self.headerArt:SetTexture(won and ICON.header or ICON.headerLoss)
+    local teamRgb = TeamRGB(m, mine)
+    SBR.Gradient(self.bannerArt, { teamRgb[1], teamRgb[2], teamRgb[3], won and 0.32 or 0.2 }, { teamRgb[1], teamRgb[2], teamRgb[3], 0 })
+    self.bannerEdge:SetColor(teamRgb[1], teamRgb[2], teamRgb[3], 0.9)
+    SBR.Gradient(self.headerArt, { res[2][1], res[2][2], res[2][3], 0.22 }, { res[2][1], res[2][2], res[2][3], 0 }, true)
     self.emblem:SetTexture(TeamEmblem(mine))
     Paint(self.emblemGlow, res[2], 0.45)
     Paint(self.result, res[2])
@@ -371,8 +418,10 @@ function RP:Render()
     self.balanceValue:SetColor(r, g, bl, 1)
     self.balanceText:SetText(SBR.Report.BalanceText(b))
     self.balanceText:SetColor(r, g, bl, 1)
-    self.balanceFill:SetWidth(math.max(1, 464 * Num(b) / 100))
-    self.balanceFill:SetColor(r * 1.1, g * 1.1, bl * 1.1, 1)
+    local fw = math.max(2, 466 * Num(b) / 100)
+    self.balanceFill:SetWidth(fw)
+    SBR.Gradient(self.balanceFill, { r * 0.6, g * 0.6, bl * 0.6, 1 }, { r, g, bl, 1 }, true)
+    self.balanceShine:SetWidth(fw)
     local teams = SortedTeams(m)
     self.balanceLeft:SetTexture(TeamEmblem(teams[1] or 1))
     self.balanceRight:SetTexture(TeamEmblem(teams[2] or teams[1] or 2))
@@ -413,13 +462,17 @@ function RP:RenderOverview(m, f)
     local cardH = #teams > 2 and 112 or 146
     for i, id in ipairs(teams) do
         local t, rgb, tot = m.teams[id], TeamRGB(m, id), totals[id] or {}
-        local card = Art(self, TeamCardBG(id), 720, cardH, nil, 0.95)
+        local card = Grad(self, { rgb[1], rgb[2], rgb[3], 0.42 }, { rgb[1], rgb[2], rgb[3], 0.06 }, 720, cardH, true)
         card:SetAnchor(TOPLEFT, body, TOPLEFT, 0, y)
+        local edge = Box(self, rgb, 1, 4, cardH)
+        edge:SetAnchor(TOPLEFT, card, TOPLEFT, 0, 0)
+        local rim = Box(self, rgb, 0.45, 720, 1)
+        rim:SetAnchor(TOPLEFT, card, TOPLEFT, 0, 0)
         if i == 1 then
             local crown = Art(self, ICON.glow, 170, 170, GOLD, 0.22)
             crown:SetAnchor(CENTER, card, LEFT, 64, 0)
         end
-        local emblem = Art(self, TeamEmblem(id), 92, 92)
+        local emblem = Art(self, TeamEmblem(id), 88, 88)
         emblem:SetAnchor(LEFT, card, LEFT, 18, 0)
         local name = Upper(Text(self, f.title, rgb, TEXT_ALIGN_LEFT, (t.name or "?") .. (id == m.localTeam and "  (you)" or ""), 420, 38))
         name:SetAnchor(TOPLEFT, card, TOPLEFT, 124, cardH > 120 and 18 or 10)
@@ -442,7 +495,7 @@ function RP:RenderOverview(m, f)
         cap:SetAnchor(TOPLEFT, body, TOPLEFT, 0, top)
         local glow = Art(self, ICON.glow, 200, 200, GOLD, 0.6)
         glow:SetAnchor(CENTER, body, TOPLEFT, 52, top + 84)
-        local cls = Art(self, mvp.classIcon or ICON.score, 76, 76)
+        local cls = Art(self, ClassIcon(mvp) or ICON.score, 72, 72)
         cls:SetAnchor(CENTER, body, TOPLEFT, 52, top + 84)
         local nm = Text(self, f.huge, GOLD, TEXT_ALIGN_LEFT, mvp.characterName or "?", 560, 56)
         nm:SetAnchor(TOPLEFT, body, TOPLEFT, 120, top + 36)
@@ -465,13 +518,14 @@ function RP:RenderOverview(m, f)
         local col, row = (i - 1) >= 8 and 1 or 0, (i - 1) % 8
         local x, yy = 770 + col * 360, 32 + row * 66
         if p.isLocal then
-            local hl = Art(self, TeamStrip(p.team), 352, 60, nil, 0.85)
+            local trgb = TeamRGB(m, p.team)
+            local hl = Grad(self, { trgb[1], trgb[2], trgb[3], 0.45 }, { trgb[1], trgb[2], trgb[3], 0 }, 352, 58, true)
             hl:SetAnchor(TOPLEFT, body, TOPLEFT, x - 6, yy - 2)
         end
         local stripe = Box(self, TeamRGB(m, p.team), 1, 4, 54)
         stripe:SetAnchor(TOPLEFT, body, TOPLEFT, x, yy)
         local title = titles[PlayerKey(p)]
-        local icon = Art(self, TitleIcon(title, p.team) or ICON.score, 40, 40)
+        local icon = Art(self, TitleIcon(title, p.team) or ICON.score, 36, 36)
         icon:SetAnchor(LEFT, stripe, RIGHT, 10, 0)
         local nm = Text(self, f.big, p.isLocal and GOLD or WHITE, TEXT_ALIGN_LEFT, p.characterName or "?", 280, 28)
         nm:SetAnchor(TOPLEFT, icon, TOPRIGHT, 10, -6)
@@ -523,14 +577,21 @@ function RP:Chart(m, f, top, title, icon, series, teams, height, fmt, mirrored)
             local v = pt and Num(pt[2]) or 0
             if v > 0 then
                 local x = (bi - 1) * slot + inset
+                local rgb = TeamRGB(m, id)
+                local hi = { math.min(1, rgb[1] * 1.15), math.min(1, rgb[2] * 1.15), math.min(1, rgb[3] * 1.15), 1 }
+                local lo = { rgb[1] * 0.55, rgb[2] * 0.55, rgb[3] * 0.55, 1 }
                 if mirrored then
                     local h = (half - 2) * v / maxV
-                    local bar = Art(self, TeamFill(id), barW, h, nil, 0.95)
-                    if ti == 1 then bar:SetAnchor(BOTTOMLEFT, area, TOPLEFT, x, half)
-                    else bar:SetAnchor(TOPLEFT, area, TOPLEFT, x, half) end
+                    if ti == 1 then
+                        local bar = Grad(self, hi, lo, barW, h)
+                        bar:SetAnchor(BOTTOMLEFT, area, TOPLEFT, x, half)
+                    else
+                        local bar = Grad(self, lo, hi, barW, h)
+                        bar:SetAnchor(TOPLEFT, area, TOPLEFT, x, half)
+                    end
                 else
                     local h = (height - 4) * v / maxV
-                    local bar = Art(self, TeamFill(id), barW, h, nil, 0.95)
+                    local bar = Grad(self, hi, lo, barW - 2, h)
                     bar:SetAnchor(BOTTOMLEFT, area, BOTTOMLEFT, x + (ti - 1) * barW, 0)
                 end
             end
@@ -593,8 +654,8 @@ function RP:RenderYou(m, f)
         edge:SetAnchor(TOPLEFT, box, TOPLEFT, 0, 0)
         local glow = Art(self, ICON.glow, 140, 140, t[4], 0.25)
         glow:SetAnchor(CENTER, box, LEFT, 52, 0)
-        local ic = Art(self, t[1], 64, 64)
-        ic:SetAnchor(LEFT, box, LEFT, 20, 0)
+        local ic = Art(self, t[1], 56, 56)
+        ic:SetAnchor(LEFT, box, LEFT, 24, 0)
         local v = Text(self, f.title, t[4], TEXT_ALIGN_LEFT, t[2], 190, 40)
         v:SetAnchor(TOPLEFT, box, TOPLEFT, 96, 20)
         local cap = Upper(Text(self, f.tiny, DIM, TEXT_ALIGN_LEFT, t[3], 180, 22))
@@ -609,7 +670,7 @@ function RP:RenderYou(m, f)
     cap:SetAnchor(TOPLEFT, body, TOPLEFT, 0, 138)
     local glow = Art(self, ICON.glow, 230, 230, GOLD, 0.55)
     glow:SetAnchor(CENTER, body, TOPLEFT, 60, 230)
-    local ti = Art(self, TitleIcon(title, me and me.team or 1) or ICON.score, 92, 92)
+    local ti = Art(self, TitleIcon(title, me and me.team or 1) or ICON.score, 64, 64)
     ti:SetAnchor(CENTER, body, TOPLEFT, 60, 230)
     local tt = Text(self, f.giant, GOLD, TEXT_ALIGN_LEFT, title or "-", 560, 66)
     tt:SetAnchor(TOPLEFT, body, TOPLEFT, 130, 186)
@@ -629,7 +690,7 @@ function RP:RenderYou(m, f)
         if i > 8 then break end
         local x = ((i - 1) % 4) * 172
         local yy = 352 + math.floor((i - 1) / 4) * 128
-        local ic = Art(self, (type(md.icon) == "string" and md.icon ~= "") and md.icon or ICON.medals, 72, 72)
+        local ic = Art(self, (type(md.icon) == "string" and md.icon ~= "") and md.icon or ICON.medals, 64, 64)
         ic:SetAnchor(TOP, body, TOPLEFT, x + 80, yy)
         local nm = Text(self, f.tiny, NORMAL, TEXT_ALIGN_CENTER, (md.name or "?") .. (md.n > 1 and ("  |cF2D17Ax" .. md.n .. "|r") or ""), 164, 22)
         nm:SetAnchor(TOP, ic, BOTTOM, 0, 4)
@@ -644,18 +705,21 @@ function RP:RenderYou(m, f)
     pcap:SetAnchor(TOPLEFT, body, TOPLEFT, 760, 138)
     local team = me and me.team or 1
     local AXIS_ICON = { kills = ICON.kills, damage = ICON.damage, healing = ICON.healing, assists = ICON.assists,
-        objectives = TeamPoint(team), medals = ICON.medals, survival = ICON.shield }
+        objectives = TITLE_ICON["Objective runner"], medals = TITLE_ICON.Medalist, survival = ICON.shield }
+    -- columns inside the 1480 px body: icon 32 | label 200 | bar 380 | value 80 (ends at 1470)
+    local teamRgb = TeamRGB(m, team)
     for i, axis in ipairs(m.profile or {}) do
-        local yy = 176 + (i - 1) * 58
-        local ic = Art(self, AXIS_ICON[axis.key] or ICON.score, 34, 34)
+        local yy = 178 + (i - 1) * 56
+        local ic = Art(self, AXIS_ICON[axis.key] or ICON.score, 32, 32)
         ic:SetAnchor(TOPLEFT, body, TOPLEFT, 760, yy)
-        local l = Text(self, f.big, WHITE, TEXT_ALIGN_LEFT, axis.label, 210, 30)
+        local l = Text(self, f.big, WHITE, TEXT_ALIGN_LEFT, axis.label, 200, 32)
         l:SetAnchor(LEFT, ic, RIGHT, 10, 0)
         local share = math.max(0, math.min(1, Num(axis.share)))
-        Bar(self, l, LEFT, RIGHT, 6, 0, 400, share, TeamFill(team), share >= 0.999 and GOLD or nil)
-        local v = Text(self, share >= 0.999 and f.big or f.small, share >= 0.999 and GOLD or NORMAL, TEXT_ALIGN_RIGHT,
-            share >= 0.999 and "best" or string.format("%d%%", math.floor(share * 100 + 0.5)), 70, 30)
-        v:SetAnchor(LEFT, l, RIGHT, 412, 0)
+        local best = share >= 0.999
+        Bar(self, l, LEFT, RIGHT, 4, 0, 380, share, best and GOLD or teamRgb)
+        local v = Text(self, best and f.big or f.text, best and GOLD or WHITE, TEXT_ALIGN_RIGHT,
+            best and "Best" or string.format("%d%%", math.floor(share * 100 + 0.5)), 80, 32)
+        v:SetAnchor(LEFT, l, RIGHT, 388, 0)
     end
 end
 

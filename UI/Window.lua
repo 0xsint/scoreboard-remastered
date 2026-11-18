@@ -380,7 +380,7 @@ function UI:Create()
 
     -- header art: your team's banner (win / loss) or scoreboard background across the
     -- top, your team's emblem by the title, and an emblem + score block per team
-    self.headerBanner = CreateTexture(tlw, 1, 1, 1, 0.5)
+    self.headerBanner = CreateTexture(tlw, 1, 1, 1, 1) -- a gradient, sharp at any size
     self.headerGlow = CreateTexture(tlw, 1, 1, 1, 0.45)
     self.headerGlow:SetTexture(TEX.glow)
     self.headerEmblem = CreateTexture(tlw, 1, 1, 1, 1)
@@ -759,7 +759,9 @@ function UI:PaintRowBackground(row)
     local selected = row.player and self.selectedKey == PlayerKey(row.player) and (gamepad or self.detailsOpen)
     local isLocal = row.player and row.player.isLocal
     row.localGlow:SetHidden(not isLocal)
-    row.teamBg:SetColor(1, 1, 1, isLocal and 0.30 or ((row.index or 0) % 2 == 0 and 0.13 or 0.08))
+    local t = row.teamRgb or { 1, 1, 1 }
+    local a = isLocal and 0.22 or ((row.index or 0) % 2 == 0 and 0.13 or 0.08)
+    SBR.Gradient(row.teamBg, { t[1], t[2], t[3], a }, { t[1], t[2], t[3], a * 0.2 }, true)
     if selected then
         row.bg:SetColor(1, 0.82, 0.42, gamepad and 0.22 or 0.16)
     elseif row.index and row.index % 2 == 0 then
@@ -1185,10 +1187,10 @@ function UI:RefreshHeader(match)
     self.headerEmblem:SetHidden(mine == nil)
     self.headerGlow:SetHidden(mine == nil)
     if mine then
-        self.headerBanner:SetTexture(SBR.TeamArt(mine, match.endedAt and "banner" or "background", won))
-        self.headerBanner:SetColor(1, 1, 1, match.endedAt and 0.5 or 0.35)
-        self.headerEmblem:SetTexture(SBR.TeamArt(mine, "emblem"))
         local r, g, b = SBR.HexToRGB((match.teams and match.teams[mine] and match.teams[mine].color) or "FFFFFF")
+        -- your team's colour fading down the header (brighter once you've won)
+        SBR.Gradient(self.headerBanner, { r, g, b, (match.endedAt and won) and 0.34 or 0.22 }, { r, g, b, 0 })
+        self.headerEmblem:SetTexture(SBR.TeamArt(mine, "emblemLarge"))
         self.headerGlow:SetColor(r, g, b, 0.4)
     end
     self.title:SetText(match.name or match.zoneName or "Battleground")
@@ -1234,7 +1236,7 @@ function UI:RefreshHeader(match)
         b.name:SetHidden(t == nil)
         if t then
             local r, g, bl = SBR.HexToRGB(t.color or "FFFFFF")
-            b.emblem:SetTexture(SBR.TeamArt(id, "emblem"))
+            b.emblem:SetTexture(SBR.TeamArt(id, "emblemLarge"))
             -- multi-round modes are won on rounds: show rounds won, not this round's score
             if (match.numRounds or 1) > 1 and t.roundsWon ~= nil then
                 b.score:SetText(tostring(t.roundsWon))
@@ -1317,10 +1319,12 @@ function UI:FillRow(row, p, match, cols, contentWidth, slot, layoutChanged)
     end
     if row.teamId ~= p.team then
         row.teamId = p.team
-        row.strip:SetTexture(SBR.TeamArt(p.team, "fill"))
-        row.strip:SetColor(1, 1, 1, 1)
-        row.teamBg:SetTexture(SBR.TeamArt(p.team, "background"))
-        row.localGlow:SetTexture(SBR.TeamArt(p.team, "strip"))
+        -- team colour: a solid edge, and gradients (not stretched art) behind the row
+        local team = match.teams and match.teams[p.team]
+        local r, g, b = SBR.HexToRGB(team and team.color or "FFFFFF")
+        row.teamRgb = { r, g, b }
+        row.strip:SetColor(r, g, b, 1)
+        SBR.Gradient(row.localGlow, { r, g, b, 0.5 }, { r, g, b, 0 }, true)
     end
     for ci, c in ipairs(cols) do
         local cell = row.cells[ci]
