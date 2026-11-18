@@ -126,12 +126,3 @@ function SBR.ShallowCopy(t)
     return c
 end
 
--- Iterate the global table without tripping on protected entries.
-function SBR.ForEachGlobal(fn)
-    local iter = zo_insecurePairs or pairs
-    pcall(function()
-        for k, v in iter(_G) do
-            if type(k) == "string" then fn(k, v) end
-        end
-    end)
-end

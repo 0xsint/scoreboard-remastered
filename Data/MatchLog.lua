@@ -3,8 +3,12 @@ local SBR = ScoreboardRemastered
 local ML = {}
 SBR.MatchLog = ML
 
-local SNAPSHOT_THROTTLE_MS = 500
-local PERIODIC_MS = 5000
+-- EVENT_BATTLEGROUND_SCOREBOARD_UPDATED fires about every second during a match.
+-- Snapshots are throttled: often while something of ours (or the native board) is on
+-- screen, rarely otherwise. The final snapshot at the end of the match is always taken.
+local SNAPSHOT_THROTTLE_VISIBLE_MS = 1000
+local SNAPSHOT_THROTTLE_HIDDEN_MS = 4000
+local PERIODIC_MS = 15000
 
 -- SavedVariables can only hold plain data; strip anything else and cap depth.
 local function Sanitize(v, depth)
@@ -152,7 +156,8 @@ function ML:Snapshot()
         if fight or match.lf or match.ledger then
             -- Overwrite with nil too: a live LibFights fight it later discards
             -- (shorter than its minFightSeconds) must drop out again.
-            p.fight = fight and Sanitize(fight, 0) or nil
+            -- the ledger's stats are fresh plain tables; only LibFights' need cleaning
+            p.fight = fight and (p.isLocal and Sanitize(fight, 0) or fight) or nil
         end
         if not p.isLocal then
             local vs = (SBR.FightTracker.ledger and SBR.FightTracker:GetVsStats(p.characterName))
@@ -191,11 +196,19 @@ function ML:RequestSnapshot()
     -- instead of postponing it forever.
     self.snapshotPending = true
     local ns = SBR.name .. "_Snapshot"
-    EVENT_MANAGER:RegisterForUpdate(ns, SNAPSHOT_THROTTLE_MS, function()
+    EVENT_MANAGER:RegisterForUpdate(ns, self:IsAnythingShowing() and SNAPSHOT_THROTTLE_VISIBLE_MS or SNAPSHOT_THROTTLE_HIDDEN_MS, function()
         EVENT_MANAGER:UnregisterForUpdate(ns)
         ML.snapshotPending = false
         ML:Snapshot()
     end)
+end
+
+function ML:IsAnythingShowing()
+    local W, GP, Hook = SBR.Window, SBR.Gamepad, SBR.Hook
+    if W and W.control and not W.control:IsHidden() then return true end
+    if GP and GP:IsShowing() then return true end
+    if Hook and Hook.IsNativeVisible and Hook:IsNativeVisible() then return true end
+    return false
 end
 
 function ML:StartPeriodic()

@@ -13,6 +13,11 @@
 -- on what counts as damage, healing, CC and so on.
 --
 -- The ledger lives in match.ledger (SavedVariables), so /reloadui mid-match keeps it.
+--
+-- Performance: this runs for every combat event in a battleground, often hundreds a
+-- second, so it is kept cheap. The event is registered once per result type it uses,
+-- so the game only calls into Lua for those results (most combat events are other
+-- results). Names are formatted once and cached, and recap entries are reused.
 local SBR = ScoreboardRemastered
 local FT = { name = "Combat log", active = false }
 SBR.FightTracker = FT
@@ -100,14 +105,38 @@ function FT:Vs(name)
     return v
 end
 
+-- zo_strformat is expensive; each raw name / ability is formatted once per match
+local cleanNames, abilityNames = {}, {}
+
+local function Clean(raw)
+    if raw == nil or raw == "" then return "" end
+    local c = cleanNames[raw]
+    if c == nil then
+        c = SBR.CleanName(raw)
+        cleanNames[raw] = c
+    end
+    return c
+end
+
+local function AbilityName(raw, abilityId)
+    local key = abilityId or raw
+    if key == nil then return "" end
+    local c = abilityNames[key]
+    if c == nil then
+        c = SBR.CleanName(raw)
+        abilityNames[key] = c
+    end
+    return c
+end
+
 function FT:ResolveName(name, unitId, unitType)
     if unitType == COMBAT_UNIT_TYPE_PLAYER or unitType == COMBAT_UNIT_TYPE_PLAYER_PET then
         return self.myName -- your pet's damage is yours
     end
-    name = SBR.CleanName(name)
-    if name ~= "" then
-        if unitId and unitId ~= 0 then self.unitNames[unitId] = name end
-        return name
+    if name ~= nil and name ~= "" then
+        local clean = Clean(name)
+        if unitId and unitId ~= 0 and self.unitNames[unitId] ~= clean then self.unitNames[unitId] = clean end
+        return clean
     end
     return unitId and self.unitNames[unitId] or ""
 end
@@ -130,16 +159,24 @@ function FT:MarkActive(u, name, now)
     self.lastActive[name] = now
 end
 
-local function PushRecent(u, entry)
+-- Last RECENT_HITS hits, oldest first; the oldest entry's table is reused.
+local function PushRecent(u, now, ability, abilityId, hit, source, crit)
     local r = u.recent
-    r[#r + 1] = entry
-    if #r > RECENT_HITS then table.remove(r, 1) end
+    local e
+    if #r >= RECENT_HITS then
+        e = table.remove(r, 1)
+    else
+        e = {}
+    end
+    e.t, e.ability, e.abilityId, e.hit, e.source, e.crit = now, ability, abilityId, hit, source, crit
+    r[#r + 1] = e
 end
 
 function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, targetName, targetType, hitValue, sourceUnitId, targetUnitId, abilityId)
     if isError or not self.ledger then return end
     local cat = CATEGORY[result]
     if not cat then return end
+    if (cat == "damage" or cat == "heal") and (hitValue or 0) <= 0 then return end
 
     local srcName = self:ResolveName(sourceName, sourceUnitId, sourceType)
     local tgtName = self:ResolveName(targetName, targetUnitId, targetType)
@@ -152,7 +189,7 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
 
     if cat == "damage" then
         if hit <= 0 then return end
-        local ability = SBR.CleanName(abilityName)
+        local ability = AbilityName(abilityName, abilityId)
         if src and not selfTarget then
             src.damageDone = src.damageDone + hit
             src.hits = src.hits + 1
@@ -167,8 +204,7 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
         if tgt then
             tgt.damageTaken = tgt.damageTaken + hit
             if result == R_BLOCKED then tgt.damageBlocked = tgt.damageBlocked + hit end
-            PushRecent(tgt, { t = now, ability = ability, abilityId = abilityId, hit = hit, source = srcName,
-                crit = CRIT[result] and true or nil })
+            PushRecent(tgt, now, ability, abilityId, hit, srcName, CRIT[result] and true or nil)
         end
         if srcName == me and tgtName ~= me then
             local v = self:Vs(tgtName)
@@ -180,7 +216,7 @@ function FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, 
     elseif cat == "heal" then
         if hit <= 0 then return end
         if src then
-            local ability = SBR.CleanName(abilityName)
+            local ability = AbilityName(abilityName, abilityId)
             src.healingDone = src.healingDone + hit
             src.healHits = src.healHits + 1
             if CRIT[result] then src.healCrits = src.healCrits + 1 end
@@ -279,18 +315,36 @@ function FT:Start(match)
     self:Bind(match)
     if self.active then return end
     self.active = true
-    local ns = SBR.name .. "_Combat"
-    EVENT_MANAGER:RegisterForEvent(ns, EVENT_COMBAT_EVENT,
-        function(_, result, isError, abilityName, _, _, sourceName, sourceType, targetName, targetType, hitValue, _, _, _, sourceUnitId, targetUnitId, abilityId)
-            FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, targetName, targetType, hitValue, sourceUnitId, targetUnitId, abilityId)
-        end)
-    EVENT_MANAGER:AddFilterForEvent(ns, EVENT_COMBAT_EVENT, REGISTER_FILTER_IS_ERROR, false)
+    local function handler(_, result, isError, abilityName, _, _, sourceName, sourceType, targetName, targetType, hitValue, _, _, _, sourceUnitId, targetUnitId, abilityId)
+        FT:OnCombatEvent(result, isError, abilityName, sourceName, sourceType, targetName, targetType, hitValue, sourceUnitId, targetUnitId, abilityId)
+    end
+    -- one registration per result type we count, filtered in the game client, so the
+    -- many other combat results (effects, power changes, misses...) never reach Lua
+    self.namespaces = {}
+    if REGISTER_FILTER_COMBAT_RESULT then
+        local USED = { damage = true, heal = true, shield = true, cc = true, death = true }
+        for result, cat in pairs(CATEGORY) do
+            if USED[cat] and type(result) == "number" then
+                local ns = SBR.name .. "_Combat" .. tostring(result)
+                EVENT_MANAGER:RegisterForEvent(ns, EVENT_COMBAT_EVENT, handler)
+                EVENT_MANAGER:AddFilterForEvent(ns, EVENT_COMBAT_EVENT, REGISTER_FILTER_COMBAT_RESULT, result, REGISTER_FILTER_IS_ERROR, false)
+                self.namespaces[#self.namespaces + 1] = ns
+            end
+        end
+    else
+        local ns = SBR.name .. "_Combat"
+        EVENT_MANAGER:RegisterForEvent(ns, EVENT_COMBAT_EVENT, handler)
+        EVENT_MANAGER:AddFilterForEvent(ns, EVENT_COMBAT_EVENT, REGISTER_FILTER_IS_ERROR, false)
+        self.namespaces[1] = ns
+    end
 end
 
 function FT:Stop()
     if self.active then
         self.active = false
-        EVENT_MANAGER:UnregisterForEvent(SBR.name .. "_Combat", EVENT_COMBAT_EVENT)
+        for _, ns in ipairs(self.namespaces or {}) do EVENT_MANAGER:UnregisterForEvent(ns, EVENT_COMBAT_EVENT) end
+        self.namespaces = nil
     end
     self.ledger = nil
+    cleanNames, abilityNames = {}, {}
 end

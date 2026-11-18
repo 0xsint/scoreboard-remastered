@@ -63,8 +63,8 @@ and every 5 seconds:
 - Battleground name, game type, team size, rounds, state, timer, your team
 - Every team's name, color and score, plus per-round team scores
 - Every player: character name, @account, team, class and class icon
-- **Every score type the client defines.** It finds all `SCORE_TRACKER_TYPE_*`
-  constants at load time, so new score types appear without an add-on update
+- **Every score type the client defines:** all 20 `SCORE_TRACKER_TYPE_*` types in
+  API 101051. A type ZOS adds later needs one line in `Data/Battleground.lua`.
 - Medals per player (name, icon, count) and your own medals in the order you earned them
 - A kill feed (`EVENT_BATTLEGROUND_KILL`): killer, victim, teams, ability, time
 - Players who left mid-match are kept and marked *(left)*
@@ -315,6 +315,32 @@ node tools/render.js out/screens.json docs/screenshots   # needs Playwright + Ch
 `SIM_GUIROOT=1366x768` (or any size) runs the simulation on a smaller UI canvas, as
 with a low resolution or a large UI scale, and the renderer draws at that size.
 
+## Performance
+
+The add-on keeps its work small enough for ESO's per-frame add-on budget (which consoles
+enforce strictly):
+
+- **Combat log:** it registers `EVENT_COMBAT_EVENT` once per result type it counts, with
+  the game's result filter, so effects, power changes, misses and the rest never reach
+  Lua. Names are formatted once (`zo_strformat` is slow) and cached, and death-recap
+  entries are reused instead of allocated per hit.
+- **Snapshots** (reading the native scoreboard): at most once a second while a
+  scoreboard is on screen, every 4 seconds otherwise, plus a 15-second fallback. The
+  reader calls the game directly (about 500 values per snapshot), caches class and medal
+  info, and doesn't deep-copy stats that are already plain tables.
+- **Load:** nothing walks the global table. Score types, fragments and scenes are
+  looked up by their known names.
+
+`SIM_PROFILE=1` makes the simulator print the time spent in the hot paths. Over eight
+simulated matches, the changes above cut snapshot time from 5.1 s to 1.6 s (2479
+snapshots down to 958, each 20% cheaper) and combat-event time by 45%. The combat
+filter's saving is larger in game than in the simulation, which only sends the results
+the add-on counts.
+
+If you still see the warning, turn off **Fight stats for every player (combat ledger)**
+(`trackCombat`) in settings. That removes the combat-log handler entirely and keeps
+LibFights' data for your own row.
+
 ## Notes
 
 - The combat ledger is saved with the in-progress match, so `/reloadui` mid-match keeps
@@ -322,7 +348,8 @@ with a low resolution or a large UI scale, and the renderer draws at that size.
 - Battleground teams are normally grouped. If a teammate isn't in your group, they only
   get the stats from their interactions with you.
 - Every game API call is protected. If ZOS renames a function, that column goes
-  empty and nothing errors. If the panel doesn't open with the scoreboard, run
+  empty and nothing errors. (The scoreboard reader, which runs every snapshot, calls
+  the game directly inside one protected call instead, to save CPU.) If the panel doesn't open with the scoreboard, run
   `/sbr hooks` and add the scene or fragment name to `UI/ScoreboardHook.lua`.
 - The gamepad view uses ESO's standard gamepad building blocks: its own scene, the
   keybind strip, directional input and the movement controller. Like the rest of the

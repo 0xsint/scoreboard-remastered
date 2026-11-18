@@ -21,6 +21,7 @@ local OBJECT_NAMES = {
     "KEYBOARD_BATTLEGROUND_SCOREBOARD",
     "BATTLEGROUND_SCOREBOARD_END_OF_GAME",
     "ZO_BATTLEGROUND_SCOREBOARD",
+    "ZO_BATTLEGROUND_SCOREBOARD_IN_GAME",
 }
 local REFRESH_METHODS = { "UpdateAll", "RefreshAll", "UpdateScores", "RefreshScores", "OnScoreboardUpdated", "UpdateEntries", "Refresh" }
 local CONTROL_NAMES = {
@@ -139,18 +140,8 @@ function Hook:Install()
     for _, n in ipairs(FRAGMENT_NAMES) do self:HookFragment(n, _G[n]) end
     for _, n in ipairs(OBJECT_NAMES) do self:HookObject(n, _G[n]) end
 
-    SBR.ForEachGlobal(function(k, v)
-        if type(v) == "table" and IsScoreboardName(k) then
-            if k:find("FRAGMENT$") then
-                self:HookFragment(k, v)
-            elseif k:find("SCENE$") then
-                self:HookScene(k, v)
-            elseif not k:find("^SI_") then
-                self:HookObject(k, v)
-            end
-        end
-    end)
-
+    -- Known names only (from the ESO UI source, API 101051). Scanning _G for others
+    -- walked tens of thousands of globals and cost a large frame spike on load.
     if SCENE_MANAGER and type(SCENE_MANAGER.scenes) == "table" then
         for name, scene in pairs(SCENE_MANAGER.scenes) do
             if type(name) == "string" and IsScoreboardName(name) then self:HookScene(name, scene) end

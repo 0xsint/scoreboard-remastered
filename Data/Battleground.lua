@@ -6,9 +6,8 @@ SBR.Battleground = BG
 -- Column order, short labels and table priority for every SCORE_TRACKER_TYPE_* in
 -- API 101051. Priority decides what stays in the PC table when it has to shrink to
 -- fit the screen (1 = always, 2 = objectives, 3 = extras); everything is still in
--- the details pane. Any other SCORE_TRACKER_TYPE_* constant the client defines is
--- discovered at load time and appended (priority 3), so new score types added by
--- ZOS show up without an add-on update.
+-- the details pane. Only these are read: scanning _G for unknown
+-- SCORE_TRACKER_TYPE_* constants cost a large frame spike on load.
 local PRIORITY = {
     { "SCORE", "Score", 1 },
     { "KILL", "Kills", 1 },
@@ -36,7 +35,6 @@ local PRIORITY = {
     { "CAPTURE_POINT", "Captures", 2 },
 }
 
-local IGNORED_SUFFIX = { "ITERATION", "MIN_VALUE", "MAX_VALUE", "INVALID", "NONE" }
 
 local FALLBACK_TEAM_COLORS = { "F0723C", "6BC26B", "A77BE0" } -- drakes, daemons, storm lords
 
@@ -52,21 +50,6 @@ function BG:DiscoverScoreTypes()
     end
 
     for _, entry in ipairs(PRIORITY) do add(entry[1], entry[2], entry[3]) end
-
-    local extra = {}
-    SBR.ForEachGlobal(function(k, v)
-        if type(v) == "number" then
-            local suffix = k:match("^SCORE_TRACKER_TYPE_(.+)$")
-            if suffix then
-                for _, bad in ipairs(IGNORED_SUFFIX) do
-                    if suffix:find(bad, 1, true) then return end
-                end
-                extra[#extra + 1] = suffix
-            end
-        end
-    end)
-    table.sort(extra)
-    for _, suffix in ipairs(extra) do add(suffix) end
 
     self.scoreTypes = list
     return list
@@ -179,17 +162,55 @@ function BG:ReadMatchInfo()
     return info
 end
 
+-- Info that never changes during a session, looked up once.
+local classInfo, medalInfo, entryNames = {}, {}, {}
+
+local function ClassInfo(classId)
+    local c = classInfo[classId]
+    if not c then
+        local className = SBR.API("GetClassName", GENDER_MALE or 1, classId)
+        -- ZO_GetClassIcon is the real function; GetClassIcon is only a PC compatibility alias
+        c = { name = className and SBR.CleanName(className) or nil,
+              icon = SBR.API("ZO_GetClassIcon", classId) or SBR.API("GetClassIcon", classId) }
+        classInfo[classId] = c
+    end
+    return c
+end
+
+local function MedalInfo(medalId)
+    local m = medalInfo[medalId]
+    if not m then
+        local name, icon, condition, scoreReward = SBR.API("GetMedalInfo", medalId)
+        m = { name = name and SBR.CleanName(name) or ("Medal " .. medalId), icon = icon, condition = condition,
+              scoreReward = scoreReward }
+        medalInfo[medalId] = m
+    end
+    return m
+end
+
+local function EntryName(raw)
+    if raw == nil or raw == "" then return "" end
+    local c = entryNames[raw]
+    if not c then
+        c = SBR.CleanName(raw)
+        entryNames[raw] = c
+    end
+    return c
+end
+
 -- Mirrors ZO_BattlegroundMedalInfo (battlegroundmedalinfo_shared.lua): a nil round
 -- index means the whole match, read through the cumulative medal API; a round
 -- index reads that round. Both walk medal ids with a "next id" iterator.
 local function MedalIterator(entryIndex, roundIndex)
     if roundIndex == nil and SBR.HasAPI("GenerateCumulativeMedalInfoForScoreboardEntry") then
-        SBR.API("GenerateCumulativeMedalInfoForScoreboardEntry", entryIndex, BG:GetRoundIndex())
-        return function(last) return SBR.API("GetNextBattlegroundCumulativeMedalId", last) end,
-               function(id) return SBR.API("GetBattlegroundCumulativeNumEarnedMedalsById", id) end
+        GenerateCumulativeMedalInfoForScoreboardEntry(entryIndex, BG:GetRoundIndex())
+        return GetNextBattlegroundCumulativeMedalId, GetBattlegroundCumulativeNumEarnedMedalsById
     end
-    return function(last) return SBR.API("GetNextScoreboardEntryMedalId", entryIndex, roundIndex, last) end,
-           function(id) return SBR.API("GetScoreboardEntryNumEarnedMedalsById", entryIndex, id, roundIndex) end
+    if not SBR.HasAPI("GetNextScoreboardEntryMedalId") then
+        return function() return nil end, function() return 0 end
+    end
+    return function(last) return GetNextScoreboardEntryMedalId(entryIndex, roundIndex, last) end,
+           function(id) return GetScoreboardEntryNumEarnedMedalsById(entryIndex, id, roundIndex) end
 end
 
 local function ReadMedals(entryIndex, roundIndex)
@@ -200,48 +221,45 @@ local function ReadMedals(entryIndex, roundIndex)
     while medalId and guard < 64 do
         guard = guard + 1
         local medalCount = countOf(medalId)
-        do
-            local name, icon, condition, scoreReward = SBR.API("GetMedalInfo", medalId)
-            medals[#medals + 1] = {
-                id = medalId,
-                count = medalCount or 1,
-                name = name and SBR.CleanName(name) or ("Medal " .. medalId),
-                icon = icon,
-                condition = condition,
-                scoreReward = scoreReward,
-            }
-        end
+        local info = MedalInfo(medalId)
+        medals[#medals + 1] = {
+            id = medalId,
+            count = medalCount or 1,
+            name = info.name,
+            icon = info.icon,
+            condition = info.condition,
+            scoreReward = info.scoreReward,
+        }
         medalId = nextId(medalId)
     end
     table.sort(medals, function(a, b) return (a.count or 0) > (b.count or 0) end)
     return medals
 end
 
--- Every row the native scoreboard shows, with every score type it tracks.
-function BG:ReadEntries(roundIndex)
+local function ReadEntriesUnprotected(self, roundIndex)
     local types = self.scoreTypes or self:DiscoverScoreTypes()
+    local GetInfo, GetClassId, GetScore = GetScoreboardEntryInfo, GetScoreboardEntryClassId, GetScoreboardEntryScoreByType
     local entries = {}
-    local n = SBR.API("GetNumScoreboardEntries", roundIndex) or 0
+    local n = GetNumScoreboardEntries(roundIndex) or 0
     for i = 1, n do
-        local characterName, displayName, team, isLocal = SBR.API("GetScoreboardEntryInfo", i, roundIndex)
+        local characterName, displayName, team, isLocal = GetInfo(i, roundIndex)
         if characterName or displayName then
             local e = {
-                characterName = SBR.CleanName(characterName),
+                characterName = EntryName(characterName),
                 displayName = displayName or "",
                 team = team,
                 isLocal = isLocal == true,
                 scores = {},
             }
-            e.classId = SBR.API("GetScoreboardEntryClassId", i, roundIndex)
+            e.classId = GetClassId and GetClassId(i, roundIndex) or nil
             if e.classId then
-                local className = SBR.API("GetClassName", GENDER_MALE or 1, e.classId)
-                e.className = className and SBR.CleanName(className) or nil
-                -- ZO_GetClassIcon is the real function; GetClassIcon is only a PC compatibility alias
-                e.classIcon = SBR.API("ZO_GetClassIcon", e.classId) or SBR.API("GetClassIcon", e.classId)
+                local c = ClassInfo(e.classId)
+                e.className, e.classIcon = c.name, c.icon
             end
+            local scores = e.scores
             for _, st in ipairs(types) do
-                local v = SBR.API("GetScoreboardEntryScoreByType", i, st.id, roundIndex)
-                if type(v) == "number" then e.scores[st.key] = v end
+                local v = GetScore(i, st.id, roundIndex)
+                if type(v) == "number" then scores[st.key] = v end
             end
             e.medals = ReadMedals(i, roundIndex)
             local medalTotal = 0
@@ -251,6 +269,16 @@ function BG:ReadEntries(roundIndex)
         end
     end
     return entries
+end
+
+-- Every row the native scoreboard shows, with every score type it tracks.
+-- Runs every snapshot, so the game functions are called directly inside a single
+-- pcall (not one protected call each: a snapshot reads ~500 values).
+function BG:ReadEntries(roundIndex)
+    local ok, entries = pcall(ReadEntriesUnprotected, self, roundIndex)
+    if ok then return entries end
+    SBR.Debug("reading the scoreboard failed: %s", tostring(entries))
+    return {}
 end
 
 function BG:EntryKey(e)

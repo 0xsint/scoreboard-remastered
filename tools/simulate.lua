@@ -612,6 +612,28 @@ for _, f in ipairs(manifest(ADDON .. "/ScoreboardRemastered.addon")) do dofile(A
 ScoreboardRemastered_ScoreboardConsole_OnInitialized(ctl("ScoreboardRemastered_ScoreboardConsole", nil, "toplevel"))
 ScoreboardRemastered_RecordsConsole_OnInitialized(ctl("ScoreboardRemastered_RecordsConsole", nil, "toplevel"))
 local SBR = ScoreboardRemastered
+-- SIM_PROFILE=1: CPU time spent in the add-on's hot paths, printed at the end
+local PROFILE = os.getenv("SIM_PROFILE") and {} or nil
+if PROFILE then
+    local function wrap(obj, objName, method)
+        local f = obj[method]
+        local key = objName .. ":" .. method
+        PROFILE[key] = { calls = 0, sec = 0 }
+        obj[method] = function(...)
+            local t0 = os.clock()
+            local a, b, c = f(...)
+            local p = PROFILE[key]
+            p.calls, p.sec = p.calls + 1, p.sec + (os.clock() - t0)
+            return a, b, c
+        end
+    end
+    wrap(SBR.FightTracker, "FightTracker", "OnCombatEvent")
+    wrap(SBR.MatchLog, "MatchLog", "Snapshot")
+    wrap(SBR.Window, "Window", "Refresh")
+    wrap(SBR.Battleground, "Battleground", "ReadEntries")
+    wrap(SBR.LibFights, "LibFights", "BuildAggregate")
+    wrap(SBR.Hook, "Hook", "Install")
+end
 fire(EVENT_ADD_ON_LOADED, "LibFights")
 fire(EVENT_ADD_ON_LOADED, "ScoreboardRemastered")
 LibFights.RegisterCallback(LibFights.EVENTS.FIGHT_ENDED, function(f, reason)
@@ -1135,4 +1157,15 @@ if SCREENS_OUT then
     local fh2 = io.open(SCREENS_OUT, "w")
     fh2:write(enc(out2))
     fh2:close()
+end
+
+if PROFILE then
+    local keys = {}
+    for k in pairs(PROFILE) do keys[#keys + 1] = k end
+    table.sort(keys, function(x, y) return PROFILE[x].sec > PROFILE[y].sec end)
+    for _, k in ipairs(keys) do
+        local p = PROFILE[k]
+        io.stderr:write(string.format("PROFILE %-28s %7d calls %8.1f ms total %7.3f ms/call\n", k, p.calls, p.sec * 1000,
+            p.calls > 0 and p.sec * 1000 / p.calls or 0))
+    end
 end
