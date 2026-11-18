@@ -114,6 +114,72 @@ function pageMain(screen, native, FONTS, FACES) {
   // -------- art stand-ins --------
   const CLASS = { 1: ["D", "#e0703a"], 2: ["S", "#8f7cf0"], 3: ["N", "#d04848"], 4: ["W", "#64c08a"], 5: ["N", "#9aa4b0"], 6: ["T", "#f0d060"], 117: ["A", "#4fd0c8"] };
   const hash = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+  // Stand-ins for ESO's battleground and UI art (the real files can't be redistributed):
+  // drawn in the art's own team colours, tinted like SetColor tints a texture.
+  const TEAM_HEX = { orange: ["#f0723c", "#ffb27a"], green: ["#57c26b", "#a8f0a0"], purple: ["#a77be0", "#d8c0ff"] };
+  function artFor(p, r, c, a) {
+    let m;
+    const tint = `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
+    const white = c[0] > .97 && c[1] > .97 && c[2] > .97;
+    if ((m = p.match(/battlegrounds_teamIcon_(\w+)\.dds/))) {
+      const [base, hi] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      el(r, `opacity:${a}`, `<svg width="${r.w}" height="${r.h}" viewBox="0 0 64 64"><defs><linearGradient id="e${m[1]}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${base}"/></linearGradient></defs><path d="M32 3l25 9v18c0 15-11 26-25 31C18 56 7 45 7 30V12z" fill="url(#e${m[1]})" stroke="#fff6dc" stroke-opacity=".85" stroke-width="2.5"/><path d="M32 14l6 12 13 2-9.5 9 2.3 13L32 44l-11.8 6 2.3-13-9.5-9 13-2z" fill="#201610" fill-opacity=".55"/></svg>`);
+      return true;
+    }
+    if ((m = p.match(/battlegroundsCaptureBar_fill_(\w+)\.dds/))) {
+      const [base, hi] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      const bg = white ? `linear-gradient(180deg,${hi},${base} 55%,${base})` : `linear-gradient(180deg,rgba(255,255,255,.35),${tint})`;
+      el(r, `background:${bg};opacity:${white ? a : 1};box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 0 6px ${base}66;border-radius:2px`);
+      return true;
+    }
+    if ((m = p.match(/battlegroundsCaptureBar_point_(\w+)\.dds/))) {
+      const [base, hi] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      el(r, `opacity:${a}`, `<svg width="${r.w}" height="${r.h}" viewBox="0 0 40 40"><path d="M20 3l14 17-14 17L6 20z" fill="${base}" stroke="${hi}" stroke-width="2.5"/><circle cx="20" cy="20" r="5" fill="#fff6dc"/></svg>`);
+      return true;
+    }
+    if ((m = p.match(/battlegrounds_scoreboardBG_(\w+)\.dds/))) {
+      const [base] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      el(r, `opacity:${a};background:linear-gradient(90deg,${base}88,${base}30 45%,rgba(10,10,12,.55));border:1px solid ${base}aa;box-shadow:inset 0 0 22px rgba(0,0,0,.55);border-radius:3px`);
+      return true;
+    }
+    if ((m = p.match(/highlightStrip_(\w+)\.dds/))) {
+      const [base] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      el(r, `opacity:${a};background:linear-gradient(90deg,${base}aa,${base}33 60%,transparent);border-left:3px solid ${base}`);
+      return true;
+    }
+    if ((m = p.match(/battleground_banner_(\w+)_(win|loss)\.dds/))) {
+      const [base, hi] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      const win = m[2] === "win";
+      el(r, `opacity:${a};background:linear-gradient(180deg,${win ? hi : "#5a2a26"}55,${base}${win ? "40" : "22"} 40%,transparent 100%),repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 14px,transparent 14px 28px);border-top:2px solid ${win ? hi : "#c0504a"}`);
+      return true;
+    }
+    if (/BattlegroundRoundRecapHeader/.test(p)) {
+      const loss = /_loss/.test(p);
+      el(r, `opacity:${a * .8}`, `<svg width="${r.w}" height="${r.h}" viewBox="0 0 720 90" preserveAspectRatio="none"><defs><linearGradient id="rh${loss ? 1 : 0}" x1="0" x2="1"><stop offset="0" stop-color="${loss ? "#a0403a" : "#d9b45a"}" stop-opacity="0"/><stop offset=".25" stop-color="${loss ? "#a0403a" : "#d9b45a"}" stop-opacity=".55"/><stop offset=".8" stop-color="${loss ? "#a0403a" : "#d9b45a"}" stop-opacity=".2"/><stop offset="1" stop-color="${loss ? "#a0403a" : "#d9b45a"}" stop-opacity="0"/></linearGradient></defs><path d="M0 12h720M0 78h720" stroke="url(#rh${loss ? 1 : 0})" stroke-width="2"/><rect x="0" y="16" width="720" height="58" fill="url(#rh${loss ? 1 : 0})" opacity=".35"/></svg>`);
+      return true;
+    }
+    if (/lensflare_burst/.test(p)) {
+      el(r, `background:radial-gradient(circle,${tint} 0%,rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a * .35}) 28%,transparent 62%)`);
+      return true;
+    }
+    if (/progressbar_frame_bg/.test(p)) { el(r, `background:rgba(0,0,0,.55);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,.8)`); return true; }
+    if (/progressbar_frame\.dds/.test(p)) { el(r, `border:2px solid rgba(197,194,158,.75);border-radius:10px;box-shadow:0 0 0 1px rgba(0,0,0,.7)`); return true; }
+    const ICONS = [
+      [/Icon_Experience/, '<path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" fill="#5f8f3e" stroke="#c9f0a0"/><path d="M8 8h8M8 11h8M8 14h5" stroke="#eaffd0"/>'],
+      [/champion_points_health/, '<path d="M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z" fill="#5fb06a" stroke="#d8ffd0"/>'],
+      [/champion_icon/, '<path d="M12 2l2.6 6.4L21 9l-5 4.3L17.6 20 12 16.6 6.4 20 8 13.3 3 9l6.4-.6z" fill="#e8b84a" stroke="#fff1c4"/>'],
+      [/achievements_reward/, '<path d="M8 2h8l-1 6H9z" fill="#b04a3a"/><circle cx="12" cy="14" r="7" fill="#d9a838" stroke="#fff1c4"/><path d="M12 10l1.4 2.8 3 .4-2.2 2.1.5 3-2.7-1.5-2.7 1.5.5-3-2.2-2.1 3-.4z" fill="#fff6dc"/>'],
+      [/glyphSlot_shield/, '<path d="M12 2l8 3v6c0 5.5-3.6 9.3-8 11-4.4-1.7-8-5.5-8-11V5z" fill="#6f8fb0" stroke="#e0f0ff"/><path d="M12 6v12" stroke="#e0f0ff"/>'],
+      [/currency_|currency\//i, '<circle cx="12" cy="12" r="9" fill="#3d6fb0" stroke="#cfe6ff"/><path d="M8 15l4-8 4 8M9.5 12.5h5" stroke="#fff" fill="none"/>'],
+      [/battlegrounds_tabIcon_battlegrounds/, '<path d="M12 2l8 3v6c0 5.5-3.6 9.3-8 11-4.4-1.7-8-5.5-8-11V5z" fill="#3a3428" stroke="#e9d9a8"/><path d="M8 9l8 8M16 9l-8 8" stroke="#e9d9a8"/>'],
+    ];
+    for (const [re, d] of ICONS) if (re.test(p)) {
+      el(r, `opacity:${a}`, `<svg width="${r.w}" height="${r.h}" viewBox="0 0 24 24" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`);
+      return true;
+    }
+    return false;
+  }
+
   function svgFor(p, w, h) {
     p = String(p || "");
     let m;
@@ -206,6 +272,7 @@ function pageMain(screen, native, FONTS, FACES) {
       else if (/listItem_highlight/.test(p)) el(r, `background:linear-gradient(90deg,rgba(255,255,255,${.28 * a}),rgba(255,255,255,${.12 * a}) 55%,rgba(255,255,255,0))`);
       else if (/horizontalDivider/.test(p)) el({ x: r.x, y: r.y + r.h / 2 - 1, w: r.w, h: 2 }, `background:linear-gradient(90deg,transparent,rgba(197,194,158,${.75 * a}) 20%,rgba(255,250,230,${.9 * a}) 50%,rgba(197,194,158,${.75 * a}) 80%,transparent)`);
       else if (/sortUp|sortDown/.test(p)) el(r, "", `<svg width="${r.w}" height="${r.h}" viewBox="0 0 16 16"><path d="${/sortUp/.test(p) ? "M3 11l5-6 5 6z" : "M3 5l5 6 5-6z"}" fill="${col}"/></svg>`);
+      else if (artFor(p, r, c, a)) {}
       else el(r, `opacity:${a}`, svgFor(p, r.w, r.h));
     } else if (n.kind === "label" && n.text) {
       const f = fontOf(n);

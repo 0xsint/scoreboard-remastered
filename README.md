@@ -213,6 +213,15 @@ after each match**). It also opens with A / double-click on a match in the recor
   XP, Champion Points, medals, Alliance rank, and a rank-up), your title, your medals,
   and your profile against the best player in each category.
 
+It's drawn with the game's own battleground art rather than text where it can be: your
+team's emblem and win / loss banner across the header, the round-recap header art,
+each team's scoreboard background and emblem on its card, the capture-bar fills (in
+team colours) for every chart and progress bar, highlight strips for your row, title
+and stat icons, the Alliance Points / experience / Champion / rank / medal icons, and
+a soft glow behind the MVP, your title and the active tab. Every texture path is
+checked against the ESO UI source. The screenshots draw stand-ins for that art,
+because ZeniMax's art files can't be redistributed.
+
 A (Cross) or the Scoreboard button opens the full scoreboard while the match is stored.
 Recording costs almost nothing: one small sample of team totals every 15 seconds, taken
 with the normal scoreboard snapshots, saved packed with the match.
