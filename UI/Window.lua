@@ -17,7 +17,7 @@ local UI = {
 SBR.Window = UI
 
 local WM = WINDOW_MANAGER
-local STRIP_W = 4
+local STRIP_W = 6
 
 local function Font(...)
     for i = 1, select("#", ...) do
@@ -29,13 +29,13 @@ end
 
 local STYLES = {
     keyboard = {
-        pad = 14, topH = 84, headerH = 26, rowH = 24, footerH = 42, colScale = 1, detailsW = 340, detailsMaxH = 760,
+        pad = 14, topH = 100, headerH = 26, rowH = 24, footerH = 42, colScale = 1, detailsW = 340, detailsMaxH = 760,
         fontRow = Font("ZoFontGameMedium", "ZoFontGame"), fontHead = Font("ZoFontGameSmall", "ZoFontGameBold"),
         fontTitle = Font("ZoFontWinH1", "ZoFontWinH2"), fontSub = "ZoFontGameSmall", fontTeams = Font("ZoFontWinH3", "ZoFontWinH4"),
         fontDetails = "ZoFontGameSmall", fontDetailsTitle = Font("ZoFontWinH3", "ZoFontWinH4"), iconSize = 22,
     },
     gamepad = {
-        pad = 20, topH = 104, headerH = 34, rowH = 34, footerH = 34, colScale = 1.35, detailsW = 470, detailsMaxH = 790,
+        pad = 20, topH = 124, headerH = 34, rowH = 34, footerH = 34, colScale = 1.35, detailsW = 470, detailsMaxH = 790,
         fontRow = Font("ZoFontGamepad22", "ZoFontGame"),
         fontHead = Font("ZoFontGamepadBold22", "ZoFontGamepad22", "ZoFontGameBold"),
         fontTitle = Font("ZoFontGamepadBold34", "ZoFontGamepad34", "ZoFontWinH2"),
@@ -85,6 +85,18 @@ local TEX = {
     rowSelected = "EsoUI/Art/Miscellaneous/listItem_selectedHighlight.dds",
     sortUp = "EsoUI/Art/Miscellaneous/list_sortHeader_icon_sortUp.dds",
     sortDown = "EsoUI/Art/Miscellaneous/list_sortHeader_icon_sortDown.dds",
+    glow = "EsoUI/Art/Miscellaneous/lensflare_burst_512.dds",
+    mvp = "EsoUI/Art/Achievements/achievements_reward_earned.dds",
+}
+-- column header icons (the game's own art) instead of text, where one fits
+local HEADER_ICON = {
+    ["s:SCORE"] = "EsoUI/Art/Campaign/overview_indexIcon_scoring_up.dds",
+    ["s:KILL"] = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_deathmatch.dds",
+    ["s:DEATH"] = "EsoUI/Art/DeathRecap/deathRecap_killingBlow_icon.dds",
+    ["s:ASSISTS"] = "EsoUI/Art/Campaign/overview_indexIcon_bonus_up.dds",
+    ["s:DAMAGE_DONE"] = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_competitive.dds",
+    ["s:HEALING_DONE"] = "EsoUI/Art/Champion/champion_points_health_icon.dds",
+    medals = "EsoUI/Art/Achievements/achievements_reward_earned.dds",
 }
 
 local function Uppercase(label)
@@ -202,6 +214,10 @@ function UI:BuildColumns(match)
         text = function(p)
             local name = p.characterName ~= "" and p.characterName or p.displayName or "?"
             if p.left then name = "|c888888" .. name .. " (left)|r" end
+            -- the top scorer gets a medal
+            if self.mvpKey and PlayerKey(p) == self.mvpKey then
+                name = name .. " " .. zo_iconFormat(TEX.mvp, st_.iconSize, st_.iconSize)
+            end
             return name
         end,
         sortValue = function(p) return (p.characterName or ""):lower() end,
@@ -353,6 +369,19 @@ function UI:Create()
     self.bgKeyboard = CreateBackdrop(tlw, { "ZO_DefaultBackdrop" })
     self.bgGamepad = CreateBackdrop(tlw, { "ZO_DefaultBackdrop_Gamepad", "ZO_DefaultBackdrop" })
 
+    -- header art: your team's banner (win / loss) or scoreboard background across the
+    -- top, your team's emblem by the title, and an emblem + score block per team
+    self.headerBanner = CreateTexture(tlw, 1, 1, 1, 0.5)
+    self.headerGlow = CreateTexture(tlw, 1, 1, 1, 0.45)
+    self.headerGlow:SetTexture(TEX.glow)
+    self.headerEmblem = CreateTexture(tlw, 1, 1, 1, 1)
+    self.teamBlocks = {}
+    for i = 1, 3 do
+        local b = { emblem = CreateTexture(tlw, 1, 1, 1, 1), score = CreateLabel(tlw, nil, TEXT_ALIGN_RIGHT), name = CreateLabel(tlw, nil, TEXT_ALIGN_RIGHT) }
+        Uppercase(b.name)
+        self.teamBlocks[i] = b
+    end
+
     self.closeButton = WM:CreateControlFromVirtual(NextName("Close"), tlw, "ZO_CloseButton")
     self.closeButton:SetAnchor(TOPRIGHT, tlw, TOPRIGHT, -6, 6)
     self.closeButton:SetHandler("OnClicked", function() self:Hide(true) end)
@@ -457,22 +486,50 @@ function UI:ApplyStyle(mode)
     tlw:SetMovable(not gamepad)
     tlw:SetScale(gamepad and 1 or (SBR.sv.scale or 1))
 
+    local emblemSize = math.floor(s.topH * 0.7)
+    self.headerBanner:ClearAnchors()
+    self.headerBanner:SetAnchor(TOPLEFT, tlw, TOPLEFT, 2, 2)
+    self.headerBanner:SetAnchor(BOTTOMRIGHT, tlw, TOPRIGHT, -2, s.topH - 6)
+    self.headerEmblem:SetDimensions(emblemSize, emblemSize)
+    self.headerEmblem:ClearAnchors()
+    self.headerEmblem:SetAnchor(LEFT, tlw, TOPLEFT, s.pad, math.floor((s.topH - 4) / 2))
+    self.headerGlow:SetDimensions(emblemSize * 2.2, emblemSize * 2.2)
+    self.headerGlow:ClearAnchors()
+    self.headerGlow:SetAnchor(CENTER, self.headerEmblem, CENTER, 0, 0)
     self.title:SetFont(s.fontTitle)
     self.title:ClearAnchors()
-    self.title:SetAnchor(TOPLEFT, tlw, TOPLEFT, s.pad, s.pad - 2)
-    self.title:SetDimensions(600, s.topH * 0.4)
+    self.title:SetAnchor(TOPLEFT, tlw, TOPLEFT, s.pad + emblemSize + 12, s.pad - 4)
+    self.title:SetDimensions(600, s.topH * 0.36)
+    -- team blocks, right to left: emblem, score, name above the score
+    local blockW, blockH = gamepad and 190 or 150, math.floor(s.topH * 0.5)
+    for i, b in ipairs(self.teamBlocks) do
+        local right = -(gamepad and s.pad or 40) - (i - 1) * blockW
+        b.emblem:SetDimensions(blockH, blockH)
+        b.emblem:ClearAnchors()
+        b.emblem:SetAnchor(TOPRIGHT, tlw, TOPRIGHT, right, s.pad - 2)
+        b.score:SetFont(s.fontTitle)
+        b.score:SetDimensions(blockW - blockH - 12, blockH)
+        b.score:ClearAnchors()
+        b.score:SetAnchor(RIGHT, b.emblem, LEFT, -6, 2)
+        b.name:SetFont(s.fontSub)
+        b.name:SetDimensions(blockW - 12, s.topH * 0.22)
+        b.name:ClearAnchors()
+        b.name:SetAnchor(TOPRIGHT, b.emblem, BOTTOMRIGHT, 0, -2)
+    end
     self.subtitle:SetFont(s.fontSub)
     self.subtitle:ClearAnchors()
     self.subtitle:SetAnchor(TOPLEFT, self.title, BOTTOMLEFT, 0, 0)
-    self.subtitle:SetDimensions(600, s.topH * 0.3)
+    self.subtitle:SetDimensions(600, s.topH * 0.24)
     self.teamLabel:SetFont(s.fontTeams)
     self.teamLabel:ClearAnchors()
     self.teamLabel:SetAnchor(TOPRIGHT, tlw, TOPRIGHT, gamepad and -s.pad or -40, s.pad)
     self.teamLabel:SetDimensions(520, s.topH * 0.35)
+    self.teamLabel:SetHidden(true) -- the team blocks show the teams now
     self.sourceLabel:SetFont(s.fontSub)
     self.sourceLabel:ClearAnchors()
-    self.sourceLabel:SetAnchor(TOPRIGHT, self.teamLabel, BOTTOMRIGHT, 0, 0)
-    self.sourceLabel:SetDimensions(620, s.topH * 0.3)
+    self.sourceLabel:SetAnchor(TOPLEFT, self.subtitle, BOTTOMLEFT, 0, -2)
+    self.sourceLabel:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+    self.sourceLabel:SetDimensions(700, s.topH * 0.22)
 
     self.divider:ClearAnchors()
     self.divider:SetAnchor(TOPLEFT, tlw, TOPLEFT, s.pad, s.topH - 4)
@@ -606,6 +663,8 @@ function UI:GetHeader(i)
     h.sortIcon = CreateTexture(self.headerRow, 1, 1, 1, 1)
     h.sortIcon:SetDimensions(16, 16)
     h.sortIcon:SetHidden(true)
+    h.icon = CreateTexture(self.headerRow, 1, 1, 1, 1)
+    h.icon:SetHidden(true)
     h:SetMouseEnabled(true)
     h:SetHandler("OnMouseUp", function(control, button, upInside)
         if upInside and control.column then self:SortBy(control.column.key) end
@@ -647,6 +706,13 @@ function UI:GetRow(i)
     row = WM:CreateControl(NextName("Row"), self.list, CT_CONTROL)
     row:SetMouseEnabled(true)
     row:SetHandler("OnMouseWheel", function(_, delta) self:Scroll(delta > 0 and -3 or 3) end)
+    -- the row sits on its team's scoreboard background; your row gets the team's
+    -- highlight strip on top
+    row.teamBg = CreateTexture(row, 1, 1, 1, 0.16)
+    row.teamBg:SetAnchorFill(row)
+    row.localGlow = CreateTexture(row, 1, 1, 1, 0.85)
+    row.localGlow:SetAnchorFill(row)
+    row.localGlow:SetHidden(true)
     row.bg = CreateTexture(row, 1, 1, 1, 0)
     row.bg:SetAnchorFill(row)
     row.highlight = CreateTexture(row, 1, 1, 1, 1)
@@ -683,12 +749,12 @@ function UI:PaintRowBackground(row)
     local gamepad = self.mode == "gamepad"
     local selected = row.player and self.selectedKey == PlayerKey(row.player) and (gamepad or self.detailsOpen)
     local isLocal = row.player and row.player.isLocal
+    row.localGlow:SetHidden(not isLocal)
+    row.teamBg:SetColor(1, 1, 1, isLocal and 0.30 or ((row.index or 0) % 2 == 0 and 0.13 or 0.08))
     if selected then
         row.bg:SetColor(1, 0.82, 0.42, gamepad and 0.22 or 0.16)
-    elseif isLocal then
-        row.bg:SetColor(0.31, 0.62, 0.85, 0.16)
     elseif row.index and row.index % 2 == 0 then
-        row.bg:SetColor(1, 1, 1, 0.035)
+        row.bg:SetColor(1, 1, 1, 0.025)
     else
         row.bg:SetColor(1, 1, 1, 0)
     end
@@ -805,6 +871,11 @@ function UI:RefreshDetails()
     local s = self.style
     local title = p.characterName ~= "" and p.characterName or p.displayName or "?"
     if p.isLocal then title = title .. "  |c" .. Colors().normalHex .. "(you)|r" end
+    -- the player's team emblem and class icon in front of the name
+    local size = math.floor(s.rowH * 1.1)
+    local icons = p.team and zo_iconFormat(SBR.TeamArt(p.team, "emblem"), size, size) or ""
+    if p.classIcon then icons = icons .. zo_iconFormat(p.classIcon, size, size) end
+    title = icons .. " " .. title
     local body = self:PlayerDetailsText(p)
     local offset = self.detailsOffset or 0
     if title == self.detailsTitleText and body == self.detailsBodyText and self.detailsPlacedFor == self.panelW
@@ -1091,7 +1162,25 @@ function UI:RefreshHeader(match)
         self.subtitle:SetText("")
         self.teamLabel:SetText("")
         self.sourceLabel:SetText("")
+        self.headerBanner:SetHidden(true)
+        self.headerEmblem:SetHidden(true)
+        self.headerGlow:SetHidden(true)
+        for _, b in ipairs(self.teamBlocks) do b.emblem:SetHidden(true) b.score:SetHidden(true) b.name:SetHidden(true) end
         return
+    end
+    -- header art: your team's banner once the match is over, its scoreboard
+    -- background while it runs; your emblem on a glow by the title
+    local mine = match.localTeam
+    local won = match.result == "won" or match.result == "tie"
+    self.headerBanner:SetHidden(mine == nil)
+    self.headerEmblem:SetHidden(mine == nil)
+    self.headerGlow:SetHidden(mine == nil)
+    if mine then
+        self.headerBanner:SetTexture(SBR.TeamArt(mine, match.endedAt and "banner" or "background", won))
+        self.headerBanner:SetColor(1, 1, 1, match.endedAt and 0.5 or 0.35)
+        self.headerEmblem:SetTexture(SBR.TeamArt(mine, "emblem"))
+        local r, g, b = SBR.HexToRGB((match.teams and match.teams[mine] and match.teams[mine].color) or "FFFFFF")
+        self.headerGlow:SetColor(r, g, b, 0.4)
     end
     self.title:SetText(match.name or match.zoneName or "Battleground")
     local parts = {}
@@ -1127,6 +1216,22 @@ function UI:RefreshHeader(match)
         teamTexts[#teamTexts + 1] = SBR.Colorize(t.color, string.format("%s%s %s", marker, t.name or id, t.score ~= nil and tostring(t.score) or "-"))
     end
     self.teamLabel:SetText(table.concat(teamTexts, "   "))
+    -- team blocks: the highest-numbered team on the far right, like the native board
+    for i, b in ipairs(self.teamBlocks) do
+        local id = ids[#ids - i + 1]
+        local t = id and match.teams[id]
+        b.emblem:SetHidden(t == nil)
+        b.score:SetHidden(t == nil)
+        b.name:SetHidden(t == nil)
+        if t then
+            local r, g, bl = SBR.HexToRGB(t.color or "FFFFFF")
+            b.emblem:SetTexture(SBR.TeamArt(id, "emblem"))
+            b.score:SetText(t.score ~= nil and tostring(t.score) or "-")
+            b.score:SetColor(1, 1, 1, 1)
+            b.name:SetText((id == match.localTeam and "* " or "") .. (t.name or ""))
+            b.name:SetColor(r, g, bl, 1)
+        end
+    end
 
     local src
     local ledgerOn = match.ledger ~= nil or (match.endedAt and SBR.sv.trackCombat)
@@ -1153,7 +1258,17 @@ function UI:LayoutHeaders(cols)
         h:SetAnchor(TOPLEFT, self.headerRow, TOPLEFT, c.x, 0)
         h:SetWidth(c.width)
         h:SetHorizontalAlignment(c.align)
-        h:SetText(c.label)
+        local iconPath = HEADER_ICON[c.key]
+        h:SetText(iconPath and "" or c.label)
+        h.icon:SetHidden(iconPath == nil)
+        local iconSize = self.style.headerH - 4
+        if iconPath then
+            h.icon:SetTexture(iconPath)
+            h.icon:SetDimensions(iconSize, iconSize)
+            h.icon:ClearAnchors()
+            if c.align == TEXT_ALIGN_RIGHT then h.icon:SetAnchor(RIGHT, h, RIGHT, 0, 0)
+            else h.icon:SetAnchor(LEFT, h, LEFT, 0, 0) end
+        end
         local sorted = self.sort.key == c.key
         if sorted then Paint(h, C.selected)
         elseif c.fight then Paint(h, C.fight)
@@ -1163,10 +1278,11 @@ function UI:LayoutHeaders(cols)
         if sorted then
             h.sortIcon:SetTexture(self.sort.desc and TEX.sortDown or TEX.sortUp)
             h.sortIcon:ClearAnchors()
+            local w = iconPath and iconSize or h:GetTextWidth()
             if c.align == TEXT_ALIGN_RIGHT then
-                h.sortIcon:SetAnchor(RIGHT, h, LEFT, -1 + c.width - h:GetTextWidth() - 2, 0)
+                h.sortIcon:SetAnchor(RIGHT, h, LEFT, -1 + c.width - w - 2, 0)
             else
-                h.sortIcon:SetAnchor(LEFT, h, LEFT, h:GetTextWidth() + 2, 0)
+                h.sortIcon:SetAnchor(LEFT, h, LEFT, w + 2, 0)
             end
         end
     end
@@ -1184,11 +1300,12 @@ function UI:FillRow(row, p, match, cols, contentWidth, slot, layoutChanged)
         row:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, slot * s.rowH)
         row:SetWidth(contentWidth)
     end
-    local team = match.teams and match.teams[p.team]
-    local color = team and team.color or "FFFFFF"
-    if row.stripColor ~= color then
-        row.stripColor = color
-        row.strip:SetColor(SBR.HexToRGB(color))
+    if row.teamId ~= p.team then
+        row.teamId = p.team
+        row.strip:SetTexture(SBR.TeamArt(p.team, "fill"))
+        row.strip:SetColor(1, 1, 1, 1)
+        row.teamBg:SetTexture(SBR.TeamArt(p.team, "background"))
+        row.localGlow:SetTexture(SBR.TeamArt(p.team, "strip"))
     end
     for ci, c in ipairs(cols) do
         local cell = row.cells[ci]
@@ -1237,6 +1354,14 @@ function UI:Refresh()
     local s = self.style
     local match = self:GetViewedMatch()
     self:RefreshHeader(match)
+
+    -- the top scorer (MVP) gets a medal by their name
+    local mvp, best = nil, -1
+    for _, p in pairs(match and match.players or {}) do
+        local sc = p.scores and p.scores.SCORE or 0
+        if sc > best then mvp, best = p, sc end
+    end
+    self.mvpKey = mvp and best > 0 and PlayerKey(mvp) or nil
 
     local cols = match and self:BuildColumns(match) or {}
     local x = STRIP_W + 4

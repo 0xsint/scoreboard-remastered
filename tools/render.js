@@ -119,6 +119,7 @@ function pageMain(screen, native, FONTS, FACES) {
   const TEAM_HEX = { orange: ["#f0723c", "#ffb27a"], green: ["#57c26b", "#a8f0a0"], purple: ["#a77be0", "#d8c0ff"] };
   function artFor(p, r, c, a) {
     let m;
+    a = a * (c[3] ?? 1); // the texture's own alpha (SetColor), as the game applies it
     const tint = `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
     const white = c[0] > .97 && c[1] > .97 && c[2] > .97;
     if ((m = p.match(/battlegrounds_teamIcon_(\w+)\.dds/))) {
@@ -190,6 +191,13 @@ function pageMain(screen, native, FONTS, FACES) {
     if (/medal_/.test(p)) {
       const hue = [42, 205, 350, 130, 280, 18][hash(p) % 6];
       return `<svg width="${w}" height="${h}" viewBox="0 0 60 60"><path d="M20 2h8l4 14-6 4zM40 2h-8l-4 14 6 4z" fill="hsl(${(hue + 180) % 360} 45% 45%)"/><circle cx="30" cy="36" r="20" fill="hsl(${hue} 55% 40%)" stroke="hsl(${hue} 70% 72%)" stroke-width="2.5"/><path d="M30 25l3.2 6.6 7.2.9-5.3 5 1.4 7.2L30 41.2l-6.5 3.5 1.4-7.2-5.3-5 7.2-.9z" fill="hsl(${hue} 85% 82%)"/></svg>`;
+    }
+    if ((m = p.match(/battlegrounds_teamIcon_(\w+)\.dds/))) {
+      const [base, hi] = TEAM_HEX[m[1]] || TEAM_HEX.green;
+      return `<svg width="${w}" height="${h}" viewBox="0 0 64 64"><path d="M32 3l25 9v18c0 15-11 26-25 31C18 56 7 45 7 30V12z" fill="${base}" stroke="${hi}" stroke-width="3"/><path d="M32 14l6 12 13 2-9.5 9 2.3 13L32 44l-11.8 6 2.3-13-9.5-9 13-2z" fill="#201610" fill-opacity=".55"/></svg>`;
+    }
+    if (/achievements_reward/.test(p)) {
+      return `<svg width="${w}" height="${h}" viewBox="0 0 24 24" stroke-width="1.4"><path d="M8 2h8l-1 6H9z" fill="#b04a3a"/><circle cx="12" cy="14" r="7" fill="#d9a838" stroke="#fff1c4"/><path d="M12 10l1.4 2.8 3 .4-2.2 2.1.5 3-2.7-1.5-2.7 1.5.5-3-2.2-2.1 3-.4z" fill="#fff6dc"/></svg>`;
     }
     if (/ability_/.test(p)) {
       const hue = hash(p) % 360;

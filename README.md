@@ -128,6 +128,18 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
   the kill log, both in a pre-selected box ready for Ctrl+C.
 - Keybinds: *Controls → Scoreboard Remastered*.
 
+### The look
+
+The scoreboard uses the game's own battleground art, like the battle report:
+
+- **Header:** your team's emblem on a glow, and your team's banner across the top (win
+  or loss once the match ends, the team scoreboard background while it runs).
+- **Teams:** each team is shown as its emblem and score, in team colour.
+- **Column headers:** icons for score, kills, deaths, assists, damage, healing and medals.
+- **Rows:** every row sits on its team's scoreboard background with a team-coloured
+  edge. Your row gets the team's highlight strip, and the top scorer gets a medal.
+- **Details:** the pane leads with the player's team emblem and class icon.
+
 ### It replaces the native scoreboard
 
 The scoreboard key now opens Scoreboard Remastered instead of ESO's in-game battleground

@@ -33,15 +33,7 @@ local DIM, WHITE, GOLD, NORMAL = { 0.60, 0.60, 0.62 }, { 1, 1, 1 }, { 0.95, 0.82
 -- the game's art (paths checked against the ESO UI source, API 101051)
 ---------------------------------------------------------------------------
 local ART = "EsoUI/Art/Battlegrounds/"
-local TEAM_ART = {} -- team id -> colour name used by the battleground art files
-local function TeamArtColor(id)
-    if not next(TEAM_ART) then
-        TEAM_ART[BATTLEGROUND_TEAM_FIRE_DRAKES or 1] = "orange"
-        TEAM_ART[BATTLEGROUND_TEAM_PIT_DAEMONS or 2] = "green"
-        TEAM_ART[BATTLEGROUND_TEAM_STORM_LORDS or 3] = "purple"
-    end
-    return TEAM_ART[id] or "green"
-end
+local function TeamArtColor(id) return SBR.TeamArtColor(id) end
 local function TeamEmblem(id) return ART .. "battlegrounds_teamIcon_" .. TeamArtColor(id) .. ".dds" end
 local function TeamFill(id) return ART .. "battlegroundsCaptureBar_fill_" .. TeamArtColor(id) .. ".dds" end
 local function TeamCardBG(id) return ART .. "battlegrounds_scoreboardBG_" .. TeamArtColor(id) .. ".dds" end

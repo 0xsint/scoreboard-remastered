@@ -280,3 +280,27 @@ function SBR.Realize(t)
     return t
 end
 ScoreboardRemastered.Mark("Util.lua")
+
+-- Battleground art for a team (ESO's files are named by team colour): emblem,
+-- capture-bar fill, scoreboard background, highlight strip, objective point, banner.
+local TEAM_ART_COLOR
+function SBR.TeamArtColor(id)
+    if not TEAM_ART_COLOR then
+        TEAM_ART_COLOR = {
+            [BATTLEGROUND_TEAM_FIRE_DRAKES or 1] = "orange",
+            [BATTLEGROUND_TEAM_PIT_DAEMONS or 2] = "green",
+            [BATTLEGROUND_TEAM_STORM_LORDS or 3] = "purple",
+        }
+    end
+    return TEAM_ART_COLOR[id] or "green"
+end
+local BG_ART = "EsoUI/Art/Battlegrounds/"
+function SBR.TeamArt(id, kind, won)
+    local c = SBR.TeamArtColor(id)
+    if kind == "emblem" then return BG_ART .. "battlegrounds_teamIcon_" .. c .. ".dds" end
+    if kind == "fill" then return BG_ART .. "battlegroundsCaptureBar_fill_" .. c .. ".dds" end
+    if kind == "background" then return BG_ART .. "battlegrounds_scoreboardBG_" .. c .. ".dds" end
+    if kind == "strip" then return BG_ART .. "battlegrounds_scoreboard_highlightStrip_" .. c .. ".dds" end
+    if kind == "point" then return BG_ART .. "battlegroundsCaptureBar_point_" .. c .. ".dds" end
+    if kind == "banner" then return BG_ART .. "battleground_banner_" .. c .. (won and "_win" or "_loss") .. ".dds" end
+end
