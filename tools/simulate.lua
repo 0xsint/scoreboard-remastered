@@ -100,6 +100,7 @@ function M:SetScale(s) self._scale = s end
 function M:SetHandler(name, fn) self._handlers = self._handlers or {}; self._handlers[name] = fn end
 function M:GetName() return self._name end
 function M:GetTextWidth() return #plain(self._text) * FONT_SIZE[self._font or "ZoFontGame"] * 0.48 end
+function M:GetFontHeight() return FONT_SIZE[self._font or "ZoFontGame"] * 1.3 end
 function M:GetTextHeight()
     local _, lines = tostring(self._text or ""):gsub("\n", "")
     return (lines + 1) * FONT_SIZE[self._font or "ZoFontGame"] * 1.3
@@ -1098,8 +1099,38 @@ if SCREENS_OUT then
         "gamepad", {}, { "world", "nativeScoreboard" })
     nativeFragment.cb(nil, "hidden")
 
-    -- 3-5. Console: Scoreboard Remastered (Players / Kill feed / Match)
+    -- 3. Console: Scoreboard Remastered as the PC-style table, a player's details open
+    GP:Open()
+    for _ = 1, 3 do W:MoveSelection(1) end
+    W:OpenDetails()
+    screen("console-table", "Console: Scoreboard Remastered table, details open with A / Cross",
+        "gamepad", { "ScoreboardRemasteredWindow" }, { "world" })
+    -- controller checks: details scroll, selection keeps itself in view, Y and back
+    local function check(ok, what) if not ok then error("console table check failed: " .. what) end end
+    W:ScrollDetails(3)
+    check(W.detailsOffset == 3, "right stick scrolls the details")
+    W:MoveSelection(1)
+    check(W.detailsOffset == 0, "a new selection starts its details at the top")
+    W.maxVisibleRows = 5; W.scrollOffset = 0
+    W:MoveSelection(20)
+    local _, selIdx = W:GetSelectedPlayer()
+    check(selIdx and selIdx > W.scrollOffset and selIdx <= W.scrollOffset + W.maxVisibleRows, "selection stays in view")
+    W.scrollOffset = 0; W:Refresh()
+    local keptKey = W.selectedKey
+    GP:Open("kills")
+    check(SBR.Console.scoreboard:IsShowingScene() and SBR.Console.scoreboard.tab == "kills", "Y opens the kill feed")
+    SCENE_MANAGER:HideCurrentScene()
+    check(GP.scene:IsShowing(), "back from the kill feed returns to the table")
+    check(W.detailsOpen and W.selectedKey == keptKey, "back from the kill feed keeps the selection and details")
+    io.stderr:write("console table checks passed\n")
+    -- B closes the details, B again closes the table
+    W:CloseDetails()
+    GP:Close()
+    check(not GP:IsShowing(), "B closes the table")
+
+    -- 4-6. Console: the list screens (Players with consoleLayout = "list", Kill feed, Match)
     local C = SBR.Console
+    SBR.sv.consoleLayout = "list"
     GP:Open("players")
     C.scoreboard.list:SetSelectedIndex(4)
     consoleScreen("console-scoreboard", "Console: Scoreboard Remastered, Players tab", C.scoreboard)
@@ -1110,6 +1141,7 @@ if SCREENS_OUT then
     C.scoreboard.list:SetSelectedIndex(2)
     consoleScreen("console-match", "Console: Scoreboard Remastered, Match tab (your LibFights fights)", C.scoreboard)
     C.scoreboard.tab = "players"; C.scoreboard.header.tab = 1
+    SBR.sv.consoleLayout = "table"
 
     -- 6-8. Console: Battleground records (Matches / Players / Lifetime), opened with Y / Triangle
     C.records:Open("matches")

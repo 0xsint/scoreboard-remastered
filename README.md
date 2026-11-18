@@ -20,7 +20,10 @@ database opens from the inventory, anywhere in the game.
 **Gamepad / console: "Open Remastered" on the battleground scoreboard's button bar**
 ![Open Remastered on the native scoreboard](docs/screenshots/gamepad-native.jpg)
 
-**Console: Scoreboard Remastered, Players tab (ESO's own gamepad list screen; details in the right tooltip)**
+**Console: Scoreboard Remastered, the PC table driven by the controller (details open with A / Cross)**
+![Console table](docs/screenshots/console-table.jpg)
+
+**Console: the list layout (setting), Players tab, with details in the right tooltip**
 ![Console scoreboard](docs/screenshots/console-scoreboard.jpg)
 
 **Console: Kill feed tab with the death recap of the selected kill**
@@ -127,31 +130,42 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 
 ### Console, or gamepad mode on PC
 
-The console screens are built on ESO's own gamepad framework, the same pieces the game's
-menus use: `ZO_Gamepad_ParametricList_Screen` for the list on the left, the generic gamepad
-header with a tab bar and data rows, the right-side gamepad tooltip for details, and the
-standard keybind strip. They look, scroll, sound and respond like the inventory or the
-leaderboards, and the details follow the selection, as in every ESO gamepad menu.
-
 While the native battleground scoreboard is open, its button bar gets
 **Open Remastered** (right stick click by default; you can change it in settings).
 
-**Scoreboard Remastered** has three tabs:
-- **Players:** everyone in the match, grouped under team headers with team scores, your
-  row selected. The tooltip shows that player's score, K/D/A, damage, healing, rank,
-  medals, top abilities and LibFights fight stats.
-- **Kill feed:** newest first. The tooltip shows killer, victim, killing blow and the
-  last hits before death.
-- **Match:** overview, your LibFights fights and your deaths.
+**Scoreboard Remastered** is the same table as on PC, sized for the TV and driven by the
+controller. Your row starts selected. A / Cross opens that player's details beside the
+table, and they follow the selection as you move.
 
 | Xbox | PlayStation | Action |
 |---|---|---|
-| LB / RB | L1 / R1 | previous / next tab |
-| Up / Down | same | select (details show on the right) |
+| Up / Down (D-pad or left stick) | same | move the selection (hold to repeat) |
+| Left / Right | same | sort by the previous / next column |
 | LT / RT | L2 / R2 | page up / down |
-| X | Square | change the sort: score, kills, damage, healing, DPS (Players tab) |
-| Y | Triangle | Battleground records |
-| B | Circle | back |
+| A | Cross | show / hide details |
+| Right stick | same | scroll the details |
+| X | Square | flip the sort order |
+| Y | Triangle | kill feed |
+| LB / RB | L1 / R1 | older / newer saved match |
+| L3 | L3 | group by team on / off |
+| R3 | R3 | Battleground records |
+| B | Circle | close details, then close the table |
+
+The kill feed, the match summary and the records use ESO's own gamepad list screens
+(`ZO_Gamepad_ParametricList_Screen`, the generic header with a tab bar, the right-side
+tooltip). B from them goes back to the table with your selection and details as you
+left them. **Settings → Gamepad: scoreboard layout → List** uses the list screen for
+the scoreboard too:
+
+- **Players:** grouped under team headers with team scores. X changes the sort.
+- **Kill feed:** newest first, with killer, victim, killing blow and the last hits.
+- **Match:** overview, your LibFights fights and your deaths.
+
+**Smooth updates.** The table changes only what changed. A data update touches only the
+numbers that moved (no rebuild), the header is laid out again only when the columns or
+the sort change, rows that are scrolled out of view aren't filled, and bursts of updates
+(scoreboard, kills, medals) become one refresh on the next frame. The selection stays on
+the same player when the order changes, and stays in view.
 
 Settings has an **Open Scoreboard Remastered** button so you can browse the last match
 outside a battleground, since consoles have no slash commands. On console, 10 full
@@ -164,7 +178,7 @@ A records screen usable anywhere, not just in battlegrounds:
 - **Inventory:** on PC, a **Battleground records** button sits above the inventory window. On
   gamepad / console, **Battleground records** is on the inventory's button bar (right stick
   click by default; you can change it in settings). B / Esc returns to the inventory.
-- **Also opens from:** Y / Triangle on Scoreboard Remastered, the settings panel,
+- **Also opens from:** R3 on Scoreboard Remastered, the settings panel,
   `/sbr db` and `/sbr players`.
 - **PC:** a mouse-driven window. Click a tab, row or the filter line, use the mouse wheel
   to scroll, and double-click a match to open it.

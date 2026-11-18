@@ -272,6 +272,12 @@ end
 local SCREEN_MARGIN = 20
 local MIN_TABLE_WIDTH = 640
 
+-- Gamepad mode: ESO's keybind strip covers the bottom 128 px of the screen.
+local GAMEPAD_STRIP_H = 128
+function UI:GetBottomReserve()
+    return self.mode == "gamepad" and GAMEPAD_STRIP_H or 0
+end
+
 function UI:GetScreenSize()
     return (GuiRoot and GuiRoot:GetWidth() or 1920), (GuiRoot and GuiRoot:GetHeight() or 1080)
 end
@@ -411,6 +417,7 @@ function UI:CreateDetails()
     pane:SetHidden(true)
     pane:SetMouseEnabled(true)
     pane:SetDrawLevel(10) -- above the rows when it has to open over the panel
+    pane:SetHandler("OnMouseWheel", function(_, delta) self:ScrollDetails(delta > 0 and -3 or 3) end)
     self.details = pane
     -- solid fill, shown only when the pane has to open over the panel
     self.detailsFill = CreateTexture(pane, 0, 0, 0, 0.9)
@@ -507,7 +514,14 @@ function UI:ApplyStyle(mode)
         h:SetFont(s.fontHead)
         h:SetHeight(s.headerH)
     end
-    for i, row in ipairs(self.rows) do self:StyleRow(row, i) end
+    for i, row in ipairs(self.rows) do
+        self:StyleRow(row, i)
+        -- new metrics: forget what FillRow cached so everything is laid out again
+        row.slot, row.width = nil, nil
+        for _, cell in ipairs(row.cells) do cell.colKey, cell.colX = nil, nil end
+    end
+    self.columnSig = nil
+    self.detailsBodyText = nil
     self:ApplyPosition()
 end
 
@@ -516,8 +530,9 @@ function UI:ApplyPosition()
     if not c then return end
     c:ClearAnchors()
     if self.mode == "gamepad" then
-        -- centered, leaving room on the right for the details pane
-        c:SetAnchor(CENTER, GuiRoot, CENTER, -math.floor(self.style.detailsW / 2), 0)
+        -- centred above the keybind strip, leaving room for the details pane when it fits
+        local r = self:GetPanelRect()
+        c:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, r.left, r.top)
         return
     end
     local pos = SBR.sv.position
@@ -559,17 +574,19 @@ function UI:GetPanelRect()
     local screenW, screenH = self:GetScreenSize()
     local w = self.panelW or (self.control and self.control:GetWidth()) or 900
     local h = self.panelH or (self.control and self.control:GetHeight()) or 400
-    local pos = SBR.sv.position
+    local pos = self.mode ~= "gamepad" and SBR.sv.position or nil
+    local bottomReserve = self:GetBottomReserve()
+    local usableH = screenH - bottomReserve
     local left, top
     if pos and pos.left then
         left, top = pos.left, pos.top
     else
         local shift = self.paneBeside and math.floor((self.style.detailsW + 8) / 2) or 0
         left = math.floor((screenW - w) / 2) - shift
-        top = math.floor((screenH - h) / 2) - 30
+        top = math.floor((usableH - h) / 2) - (self.mode == "gamepad" and 0 or 30)
     end
     left = zo_clamp(left, 0, math.max(0, screenW - w))
-    top = zo_clamp(top, 0, math.max(0, screenH - h))
+    top = zo_clamp(top, 0, math.max(0, usableH - h))
     return { left = left, top = top, right = left + w, bottom = top + h }
 end
 
@@ -702,7 +719,9 @@ function UI:GetSelectedPlayer()
 end
 
 function UI:Select(p)
-    self.selectedKey = p and PlayerKey(p) or nil
+    local key = p and PlayerKey(p) or nil
+    if key ~= self.selectedKey then self.detailsOffset = 0 end
+    self.selectedKey = key
     for _, row in ipairs(self.rows) do
         if not row:IsHidden() then self:PaintRowBackground(row) end
     end
@@ -713,8 +732,13 @@ function UI:MoveSelection(delta)
     local list = self.sortedPlayers or {}
     if #list == 0 then return end
     local _, idx = self:GetSelectedPlayer()
+    local old = idx
     idx = idx and zo_clamp(idx + delta, 1, #list) or 1
+    if idx == old then return end -- at the top / bottom: nothing to do, no sound
     self:Select(list[idx])
+    -- scrolled past the visible rows: refresh so the selection stays in view
+    local offset, rows = self.scrollOffset or 0, self.maxVisibleRows or #list
+    if idx <= offset or idx > offset + rows then self:Refresh() end
     if SOUNDS and SOUNDS.GAMEPAD_MENU_DOWN then PlaySound(SOUNDS.GAMEPAD_MENU_DOWN) end
 end
 
@@ -738,9 +762,21 @@ function UI:ToggleDetails()
     end
 end
 
+-- Scroll the details pane by a number of lines (right stick / mouse wheel).
+function UI:ScrollDetails(delta)
+    if not self.detailsOpen or not self.detailsLineCount or self.detailsLineCount <= (self.detailsFit or 0) then return end
+    local maxOffset = self.detailsLineCount - ((self.detailsFit or 1) - 1)
+    local offset = zo_clamp((self.detailsOffset or 0) + delta, 0, math.max(0, maxOffset))
+    if offset ~= (self.detailsOffset or 0) then
+        self.detailsOffset = offset
+        self:RefreshDetails()
+    end
+end
+
 function UI:OpenDetails()
     if not self:GetSelectedPlayer() then return end
     self.detailsOpen = true
+    self.detailsBodyText = nil
     self.details:SetHidden(false)
     self:RefreshDetails()
     for _, row in ipairs(self.rows) do self:PaintRowBackground(row) end
@@ -763,13 +799,14 @@ function UI:RefreshDetails()
     local s = self.style
     local title = p.characterName ~= "" and p.characterName or p.displayName or "?"
     if p.isLocal then title = title .. "  |c" .. Colors().normalHex .. "(you)|r" end
+    local body = self:PlayerDetailsText(p)
+    local offset = self.detailsOffset or 0
+    if title == self.detailsTitleText and body == self.detailsBodyText and self.detailsPlacedFor == self.panelW
+        and offset == self.detailsShownOffset then
+        return -- same player, same numbers, same panel size: nothing to redraw
+    end
+    self.detailsTitleText, self.detailsBodyText, self.detailsPlacedFor = title, body, self.panelW
     self.detailsTitle:SetText(title)
-    self.detailsBody:SetText(self:PlayerDetailsText(p))
-    -- capped so the pane never runs into the gamepad keybind strip; longer text is cut
-    local h = self.detailsBody:GetTextHeight() + s.rowH + s.pad * 2 + 10
-    h = zo_clamp(h, 120, s.detailsMaxH)
-    self.details:SetHeight(h)
-    self.detailsBody:SetHeight(h - (s.rowH + s.pad * 2 + 10))
 
     -- beside the panel on whichever side has room; if neither does, over the right
     -- of the panel (the canvas is too small for both side by side)
@@ -790,13 +827,37 @@ function UI:RefreshDetails()
         top = rect.top + s.topH
     end
     self.detailsFill:SetHidden(top == rect.top)
-    -- never taller than the room left below its top edge
-    local room = screenH - top - SCREEN_MARGIN
-    if h > room then
-        h = math.max(120, room)
-        self.details:SetHeight(h)
-        self.detailsBody:SetHeight(h - (s.rowH + s.pad * 2 + 10))
+
+    -- never taller than the room below its top edge (above the gamepad keybind strip);
+    -- what doesn't fit scrolls: right stick on a controller, mouse wheel on PC
+    local chromeH = s.rowH + s.pad * 2 + 10
+    local room = screenH - self:GetBottomReserve() - top - SCREEN_MARGIN
+    local maxBodyH = math.max(60, math.min(s.detailsMaxH, room) - chromeH)
+    local lines = {}
+    for line in (body .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+    local lineH = (self.detailsBody.GetFontHeight and self.detailsBody:GetFontHeight()) or s.rowH
+    local fit = math.max(3, math.floor(maxBodyH / lineH))
+    local shown
+    if #lines <= fit then
+        offset, shown = 0, body
+    else
+        local window = fit - 1 -- one line for the "more" hint
+        offset = zo_clamp(offset, 0, #lines - window)
+        local part = {}
+        for i = offset + 1, math.min(#lines, offset + window) do part[#part + 1] = lines[i] end
+        local hint = self.mode == "gamepad" and "right stick" or "mouse wheel"
+        local above, below = offset, #lines - offset - window
+        part[#part + 1] = string.format("|c%s%s%s  (%s)|r", Colors().normalHex,
+            above > 0 and ("^ " .. above .. " more") or "", below > 0 and ((above > 0 and "   " or "") .. "v " .. below .. " more") or "",
+            hint)
+        shown = table.concat(part, "\n")
     end
+    self.detailsOffset, self.detailsShownOffset, self.detailsLineCount, self.detailsFit = offset, offset, #lines, fit
+    self.detailsBody:SetText(shown)
+    local h = math.min(self.detailsBody:GetTextHeight(), maxBodyH) + chromeH
+    h = math.max(120, h)
+    self.details:SetHeight(h)
+    self.detailsBody:SetHeight(h - chromeH)
     if SBR.Gamepad then SBR.Gamepad:UpdateKeybinds() end
 end
 
@@ -1061,25 +1122,19 @@ function UI:RefreshHeader(match)
     self.sourceLabel:SetText("Fight data: " .. (src or "none"))
 end
 
-function UI:Refresh()
-    if not self.control or self.control:IsHidden() then return end
-    local s = self.style
-    local match = self:GetViewedMatch()
-    self:RefreshHeader(match)
-
-    local cols = match and self:BuildColumns(match) or {}
-    local x = STRIP_W + 4
+-- Header row for this set of columns (only when the columns or the sort change).
+function UI:LayoutHeaders(cols)
+    local C = Colors()
     for i, c in ipairs(cols) do
         local h = self:GetHeader(i)
         h.column = c
         h:SetHidden(false)
         h:ClearAnchors()
-        h:SetAnchor(TOPLEFT, self.headerRow, TOPLEFT, x, 0)
+        h:SetAnchor(TOPLEFT, self.headerRow, TOPLEFT, c.x, 0)
         h:SetWidth(c.width)
         h:SetHorizontalAlignment(c.align)
         h:SetText(c.label)
         local sorted = self.sort.key == c.key
-        local C = Colors()
         if sorted then Paint(h, C.selected)
         elseif c.fight then Paint(h, C.fight)
         elseif c.vs then Paint(h, C.vs)
@@ -1094,49 +1149,131 @@ function UI:Refresh()
                 h.sortIcon:SetAnchor(LEFT, h, LEFT, h:GetTextWidth() + 2, 0)
             end
         end
-        c.x = x
-        x = x + c.width + 6
     end
     for i = #cols + 1, #self.headers do self.headers[i]:SetHidden(true) end
-    local contentWidth = math.max(x, self.mode == "gamepad" and 900 or 640)
+end
 
-    local players = match and self:SortedPlayers(match) or {}
-    self.sortedPlayers = players
-    if self.mode == "gamepad" and not self:GetSelectedPlayer() and players[1] then
-        -- keep a cursor on screen; start on your own row
-        local start = players[1]
-        for _, p in ipairs(players) do
-            if p.isLocal then start = p break end
-        end
-        self.selectedKey = PlayerKey(start)
-    end
-
-    for i, p in ipairs(players) do
-        local row = self:GetRow(i)
-        row:SetHidden(false)
+-- One visible row. Controls are only touched when something about them changed,
+-- so a refresh with new numbers costs a few SetText calls, not a rebuild.
+function UI:FillRow(row, p, match, cols, contentWidth, slot, layoutChanged)
+    local s = self.style
+    if row:IsHidden() then row:SetHidden(false) end
+    if row.slot ~= slot or row.width ~= contentWidth then
+        row.slot, row.width = slot, contentWidth
+        row:ClearAnchors()
+        row:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, slot * s.rowH)
         row:SetWidth(contentWidth)
-        row.player, row.index = p, i
-        local team = match.teams and match.teams[p.team]
-        row.strip:SetColor(SBR.HexToRGB(team and team.color or "FFFFFF"))
-        self:PaintRowBackground(row)
-        for ci, c in ipairs(cols) do
-            local cell = row.cells[ci]
-            if not cell then
-                cell = CreateLabel(row, s.fontRow)
-                cell:SetHeight(s.rowH)
-                row.cells[ci] = cell
-            end
-            cell:SetHidden(false)
+    end
+    local team = match.teams and match.teams[p.team]
+    local color = team and team.color or "FFFFFF"
+    if row.stripColor ~= color then
+        row.stripColor = color
+        row.strip:SetColor(SBR.HexToRGB(color))
+    end
+    for ci, c in ipairs(cols) do
+        local cell = row.cells[ci]
+        if not cell then
+            cell = CreateLabel(row, s.fontRow)
+            cell:SetHeight(s.rowH)
+            row.cells[ci] = cell
+        end
+        if cell:IsHidden() then cell:SetHidden(false) end
+        if layoutChanged or cell.colKey ~= c.key or cell.colX ~= c.x then
+            cell.colKey, cell.colX = c.key, c.x
             cell:ClearAnchors()
             cell:SetAnchor(TOPLEFT, row, TOPLEFT, c.x, 0)
             cell:SetWidth(c.width)
             cell:SetHorizontalAlignment(c.align)
-            local text = c.text(p)
+        end
+        local text = c.text(p)
+        if cell.text ~= text then
+            cell.text = text
             cell.isEmpty = text == "-"
             cell:SetText(text)
         end
-        for ci = #cols + 1, #row.cells do row.cells[ci]:SetHidden(true) end
-        self:PaintRowBackground(row)
+    end
+    for ci = #cols + 1, #row.cells do
+        local cell = row.cells[ci]
+        if not cell:IsHidden() then cell:SetHidden(true) end
+    end
+    self:PaintRowBackground(row)
+end
+
+-- Data updates arrive in bursts (scoreboard updates, kills, medals). They are
+-- folded into one refresh on the next frame instead of one refresh each.
+function UI:RequestRefresh()
+    if self.refreshPending then return end
+    self.refreshPending = true
+    local ns = SBR.name .. "_WindowRefresh"
+    EVENT_MANAGER:RegisterForUpdate(ns, 0, function()
+        EVENT_MANAGER:UnregisterForUpdate(ns)
+        self.refreshPending = false
+        self:Refresh()
+    end)
+end
+
+function UI:Refresh()
+    if not self.control or self.control:IsHidden() then return end
+    local s = self.style
+    local match = self:GetViewedMatch()
+    self:RefreshHeader(match)
+
+    local cols = match and self:BuildColumns(match) or {}
+    local x = STRIP_W + 4
+    for _, c in ipairs(cols) do
+        c.x = x
+        x = x + c.width + 6
+    end
+    local contentWidth = math.max(x, self.mode == "gamepad" and 900 or 640)
+
+    -- Headers are only laid out again when the columns or the sort change.
+    local sig = {}
+    for _, c in ipairs(cols) do sig[#sig + 1] = c.key .. ":" .. c.width end
+    sig = table.concat(sig, ",") .. "|" .. tostring(self.sort.key) .. tostring(self.sort.desc) .. "|" .. self.mode
+    local layoutChanged = sig ~= self.columnSig
+    self.columnSig = sig
+    if layoutChanged then self:LayoutHeaders(cols) end
+
+    local players = match and self:SortedPlayers(match) or {}
+    self.sortedPlayers = players
+    local selectedIndex
+    if self.mode == "gamepad" then
+        local _, idx = self:GetSelectedPlayer()
+        if not idx and players[1] then
+            -- keep a cursor on screen; start on your own row
+            local start, startIdx = players[1], 1
+            for i, p in ipairs(players) do
+                if p.isLocal then start, startIdx = p, i break end
+            end
+            self.selectedKey = PlayerKey(start)
+            idx = startIdx
+        end
+        selectedIndex = idx
+    end
+
+    -- as many rows as fit on screen; the rest scroll (mouse wheel, or the selection)
+    local _, screenH = self:GetScreenSize()
+    local chrome = s.topH + s.headerH + 2 + s.footerH + s.pad + SCREEN_MARGIN * 2 + self:GetBottomReserve()
+    local maxRows = math.max(4, math.floor((screenH - chrome) / s.rowH))
+    self.maxVisibleRows = maxRows
+    local offset = self.scrollOffset or 0
+    if selectedIndex then
+        -- the selected row always stays in view
+        if selectedIndex - 1 < offset then offset = selectedIndex - 1 end
+        if selectedIndex > offset + maxRows then offset = selectedIndex - maxRows end
+    end
+    self.scrollOffset = zo_clamp(offset, 0, math.max(0, #players - maxRows))
+
+    for i, p in ipairs(players) do
+        local row = self:GetRow(i)
+        local slot = i - 1 - self.scrollOffset
+        local visible = slot >= 0 and slot < maxRows
+        row.player, row.index = p, i
+        if visible then
+            self:FillRow(row, p, match, cols, contentWidth, slot, layoutChanged)
+        elseif not row:IsHidden() then
+            row:SetHidden(true)
+        end
     end
     for i = #players + 1, #self.rows do
         self.rows[i]:SetHidden(true)
@@ -1146,19 +1283,6 @@ function UI:Refresh()
     self.emptyLabel:SetHidden(#players > 0)
     self.emptyLabel:SetWidth(contentWidth)
 
-    -- as many rows as fit on screen; the mouse wheel scrolls the rest
-    local _, screenH = self:GetScreenSize()
-    local chrome = s.topH + s.headerH + 2 + s.footerH + s.pad + SCREEN_MARGIN * 2
-    local maxRows = math.max(4, math.floor((screenH - chrome) / s.rowH))
-    self.maxVisibleRows = maxRows
-    self.scrollOffset = zo_clamp(self.scrollOffset or 0, 0, math.max(0, #players - maxRows))
-    for i = 1, #players do
-        local row = self.rows[i]
-        local slot = i - 1 - self.scrollOffset
-        row:ClearAnchors()
-        row:SetAnchor(TOPLEFT, self.list, TOPLEFT, 0, slot * s.rowH)
-        if slot < 0 or slot >= maxRows then row:SetHidden(true) end
-    end
     local listH = math.max(math.min(#players, maxRows), 2) * s.rowH
     self.headerRow:SetWidth(contentWidth)
     self.list:SetDimensions(contentWidth, listH)
@@ -1182,7 +1306,7 @@ end
 
 function UI:OnDataChanged()
     if SBR.Console and SBR.Console.scoreboard then SBR.Console.scoreboard:OnDataChanged() end
-    if self.viewIndex == nil then self:Refresh() end
+    if self.viewIndex == nil and self:IsShown() then self:RequestRefresh() end
 end
 
 ---------------------------------------------------------------------------
@@ -1209,7 +1333,10 @@ function UI:OnGamepadShown()
     self:Refresh()
 end
 
-function UI:OnGamepadHidden()
+-- covered: another screen was opened on top (kill feed, records); keep the
+-- selection and details for when B returns to the table
+function UI:OnGamepadHidden(covered)
+    if covered then return end
     self:CloseDetails()
     self:ApplyStyle("keyboard")
 end
