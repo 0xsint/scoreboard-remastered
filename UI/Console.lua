@@ -379,7 +379,7 @@ function Scoreboard:InitializeKeybindStripDescriptors()
         {
             name = "Battleground records",
             keybind = "UI_SHORTCUT_TERTIARY",
-            callback = function() Console.records:Open() end,
+            callback = function() SBR.MatchBrowser:Open() end,
         },
         KEYBIND_STRIP:GetDefaultGamepadBackButtonDescriptor(),
     }

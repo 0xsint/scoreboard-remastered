@@ -1107,6 +1107,27 @@ if SCREENS_OUT then
         "gamepad", { "ScoreboardRemasteredWindow" }, { "world" })
     -- controller checks: details scroll, selection keeps itself in view, Y and back
     local function check(ok, what) if not ok then error("console table check failed: " .. what) end end
+    -- a key press as ESO's keybind strip delivers it: the newest group with that keybind
+    local function press(keybind, up)
+        for gi = #KEYBIND_STRIP.order, 1, -1 do
+            for _, b in ipairs(KEYBIND_STRIP.order[gi]) do
+                if b.keybind == keybind then
+                    if up and not b.handlesKeyUp then return true end
+                    b.callback(up)
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    local _, before = W:GetSelectedPlayer()
+    check(press("UI_SHORTCUT_INPUT_DOWN"), "D-pad down is a strip keybind")
+    press("UI_SHORTCUT_INPUT_DOWN", true)
+    local _, after = W:GetSelectedPlayer()
+    check(after == before + 1, "D-pad down moves the selection")
+    press("UI_SHORTCUT_INPUT_UP"); press("UI_SHORTCUT_INPUT_UP", true)
+    local _, back = W:GetSelectedPlayer()
+    check(back == before, "D-pad up moves it back")
     W:ScrollDetails(3)
     check(W.detailsOffset == 3, "right stick scrolls the details")
     W:MoveSelection(1)
@@ -1143,20 +1164,27 @@ if SCREENS_OUT then
     C.scoreboard.tab = "players"; C.scoreboard.header.tab = 1
     SBR.sv.consoleLayout = "table"
 
-    -- 6-8. Console: Battleground records (Matches / Players / Lifetime), opened with Y / Triangle
-    C.records:Open("matches")
-    C.records.list:SetSelectedIndex(1)
-    consoleScreen("console-records-matches", "Console: Battleground records, Matches tab", C.records)
-    C.records.tab = "players"; C.records.header.tab = 2
-    C.records.state.players.filter, C.records.state.players.sort = 3, 6   -- Opponents, sorted by "Killed you"
-    C.records:Update()
-    C.records.list:SetSelectedIndex(1)
-    consoleScreen("console-records-players", "Console: Battleground records, Players tab (opponents, by who killed you most)", C.records)
-    C.records.tab = "lifetime"; C.records.header.tab = 3; C.records:Update()
-    C.records.list:SetSelectedIndex(1)
-    consoleScreen("console-records-lifetime", "Console: Battleground records, Lifetime tab", C.records)
+    -- 7-9. Console: Battleground records, the same window as on PC (opened with R3)
     SCENE_MANAGER:HideCurrentScene()
-    SCENE_MANAGER:HideCurrentScene()
+    MB:SetTabSilently("matches")
+    MB.filter, MB.sort, MB.selected, MB.offset, MB.card = 1, 1, 1, 0, "match"
+    MB:Open()
+    check(MB.gamepadScene:IsShowing(), "records open in the gamepad scene")
+    press("UI_SHORTCUT_INPUT_DOWN"); press("UI_SHORTCUT_INPUT_DOWN", true)
+    check(MB.selected == 2, "D-pad moves the records selection")
+    press("UI_SHORTCUT_INPUT_UP"); press("UI_SHORTCUT_INPUT_UP", true)
+    screen("console-records-matches", "Console: Battleground records, Matches tab",
+        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
+    MB.card = "life"; MB:Render()
+    screen("console-records-lifetime", "Console: Battleground records, lifetime stats (Y / Triangle)",
+        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
+    MB.card = "match"
+    MB.tabState.players = { filter = 1, sort = 1, selected = 2, offset = 0 }
+    MB:SetTab("players")
+    screen("console-records-players", "Console: Battleground records, Players tab",
+        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
+    MB:Close()
+    MB:SetTabSilently("matches")
 
     -- 8. Gamepad inventory: "Battleground records" on its button bar
     for _, f in ipairs(SCENE_MANAGER.scenes.gamepad_inventory_root.cbs) do f(nil, "shown") end

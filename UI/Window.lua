@@ -762,7 +762,11 @@ function UI:ToggleDetails()
     end
 end
 
--- Scroll the details pane by a number of lines (right stick / mouse wheel).
+function UI:CanScrollDetails()
+    return self.detailsOpen and (self.detailsLineCount or 0) > (self.detailsFit or 0)
+end
+
+-- Scroll the details pane by a number of lines (LT / RT on a controller, mouse wheel).
 function UI:ScrollDetails(delta)
     if not self.detailsOpen or not self.detailsLineCount or self.detailsLineCount <= (self.detailsFit or 0) then return end
     local maxOffset = self.detailsLineCount - ((self.detailsFit or 1) - 1)
@@ -845,7 +849,7 @@ function UI:RefreshDetails()
         offset = zo_clamp(offset, 0, #lines - window)
         local part = {}
         for i = offset + 1, math.min(#lines, offset + window) do part[#part + 1] = lines[i] end
-        local hint = self.mode == "gamepad" and "right stick" or "mouse wheel"
+        local hint = self.mode == "gamepad" and "LT / RT" or "mouse wheel"
         local above, below = offset, #lines - offset - window
         part[#part + 1] = string.format("|c%s%s%s  (%s)|r", Colors().normalHex,
             above > 0 and ("^ " .. above .. " more") or "", below > 0 and ((above > 0 and "   " or "") .. "v " .. below .. " more") or "",

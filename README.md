@@ -32,13 +32,13 @@ database opens from the inventory, anywhere in the game.
 **Console: Match tab, your LibFights fights**
 ![Console match](docs/screenshots/console-match.jpg)
 
-**Console: Battleground records, Matches tab**
+**Console: Battleground records, the same window as on PC, Matches tab**
 ![Records, matches](docs/screenshots/console-records-matches.jpg)
 
-**Console: Battleground records, Players tab (opponents sorted by who killed you most)**
+**Console: Battleground records, Players tab**
 ![Records, players](docs/screenshots/console-records-players.jpg)
 
-**Console: Battleground records, Lifetime tab**
+**Console: Battleground records, lifetime stats (Y / Triangle)**
 ![Records, lifetime](docs/screenshots/console-records-lifetime.jpg)
 
 **Gamepad inventory: Battleground records on the button bar**
@@ -139,11 +139,10 @@ table, and they follow the selection as you move.
 
 | Xbox | PlayStation | Action |
 |---|---|---|
-| Up / Down (D-pad or left stick) | same | move the selection (hold to repeat) |
-| Left / Right | same | sort by the previous / next column |
-| LT / RT | L2 / R2 | page up / down |
+| D-pad up / down | same | move the selection (hold to repeat) |
+| D-pad left / right | same | sort by the previous / next column |
+| LT / RT | L2 / R2 | scroll the details when they're open, else page up / down |
 | A | Cross | show / hide details |
-| Right stick | same | scroll the details |
 | X | Square | flip the sort order |
 | Y | Triangle | kill feed |
 | LB / RB | L1 / R1 | older / newer saved match |
@@ -151,11 +150,11 @@ table, and they follow the selection as you move.
 | R3 | R3 | Battleground records |
 | B | Circle | close details, then close the table |
 
-The kill feed, the match summary and the records use ESO's own gamepad list screens
-(`ZO_Gamepad_ParametricList_Screen`, the generic header with a tab bar, the right-side
-tooltip). B from them goes back to the table with your selection and details as you
-left them. **Settings → Gamepad: scoreboard layout → List** uses the list screen for
-the scoreboard too:
+Battleground records (R3) is the same window as on PC too. The kill feed and the match
+summary use ESO's own gamepad list screens (`ZO_Gamepad_ParametricList_Screen`, the
+generic header with a tab bar, the right-side tooltip). B from any of them goes back to
+the table with your selection and details as you left them. **Settings → Gamepad:
+scoreboard layout → List** uses the list screens for the scoreboard and records too:
 
 - **Players:** grouped under team headers with team scores. X changes the sort.
 - **Kill feed:** newest first, with killer, victim, killing blow and the last hits.
@@ -180,13 +179,16 @@ A records screen usable anywhere, not just in battlegrounds:
   click by default; you can change it in settings). B / Esc returns to the inventory.
 - **Also opens from:** R3 on Scoreboard Remastered, the settings panel,
   `/sbr db` and `/sbr players`.
-- **PC:** a mouse-driven window. Click a tab, row or the filter line, use the mouse wheel
-  to scroll, and double-click a match to open it.
+- **The same window on PC and console.** On PC it's mouse-driven: click a tab, row or
+  the filter line, use the mouse wheel to scroll, and double-click a match to open it.
+  On console it's driven by the controller (table below). **Settings → Gamepad:
+  scoreboard layout → List** uses ESO's gamepad list screen instead.
 
 **Matches tab:** every match you've played. Each finished match writes a compact record
-(500 kept on PC, 150 on console), so this outlasts full scoreboards. On console the list
-is grouped by date; the tooltip shows the result, team scores, K/D/A, damage, healing,
-your rank, the match MVP, medals and top abilities.
+(500 kept on PC, 150 on console), so this outlasts full scoreboards. The card shows the
+result banner, team scores, six stat tiles, your rank and the match MVP, medals and top
+abilities. Y / Triangle switches to lifetime stats: win rate, K/D, bests, by class and
+by map.
 
 **Players tab:** everyone you've shared a battleground with, including your own profile
 across all your characters (2000 players kept on PC, 400 on console). Each player shows:
@@ -206,12 +208,13 @@ Sorts: most seen, last seen, kills, damage, healing, times they killed you, name
 
 | Xbox | PlayStation | Action |
 |---|---|---|
-| LB / RB | L1 / R1 | Matches / Players / Lifetime tab |
-| Up / Down | same | select |
+| LB / RB | L1 / R1 | Matches / Players tab |
+| D-pad up / down | same | select (hold to repeat) |
+| D-pad left / right | same | change the filter |
 | LT / RT | L2 / R2 | page up / down |
 | A | Cross | open the match's full scoreboard (Matches tab, while stored) |
-| X | Square | change the filter |
-| Y | Triangle | change the sort |
+| X | Square | change the sort |
+| Y | Triangle | match card / lifetime stats (Matches tab) |
 | B | Circle | back (to the inventory or the scoreboard) |
 
 ### Slash commands (PC)
@@ -328,6 +331,27 @@ node tools/render.js out/screens.json docs/screenshots   # needs Playwright + Ch
 
 `SIM_GUIROOT=1366x768` (or any size) runs the simulation on a smaller UI canvas, as
 with a low resolution or a large UI scale, and the renderer draws at that size.
+
+## The "insecure code" error
+
+Earlier versions could trigger ESO's *insecure code* error on console, typically when
+using the D-pad on the battleground scoreboard. Three things put add-on code into ESO's
+own (protected) input handling, and all three are gone:
+
+- **Hooks on the native scoreboard.** `ZO_PostHook` replaced methods of ESO's scoreboard
+  objects with add-on code, so the scoreboard's D-pad player selection and player
+  options ran through it. The add-on now only listens to scene and fragment state, and
+  reads data from `EVENT_BATTLEGROUND_SCOREBOARD_UPDATED`.
+- **A pushed key layer.** To make "Open Remastered" work, the add-on pushed ESO's UI
+  shortcut layer over the scoreboard, and that layer also handles the D-pad and A. The
+  button is now an action in the scoreboard's own `BattlegroundScoreboard` layer
+  (`Bindings.xml`), which takes its key from the R3 / L3 / menu shortcut. No layer is
+  pushed.
+- **`DIRECTIONAL_INPUT`.** The table and the records read the stick every frame from inside
+  ESO's input loop. They now use ESO's D-pad keybinds (`UI_SHORTCUT_INPUT_*`) with
+  their own hold-to-repeat, like any keybind button.
+
+None of the functions the add-on calls are private or protected (`tools/check-api.py`).
 
 ## Performance
 

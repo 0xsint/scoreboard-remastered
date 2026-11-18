@@ -372,7 +372,8 @@ function pageMain(screen, native, FONTS, FACES) {
       LEFT_SHOULDER: ["LB"], RIGHT_SHOULDER: ["RB"], LEFT_TRIGGER: ["LT"], RIGHT_TRIGGER: ["RT"], LEFT_STICK: ["LS"], RIGHT_STICK: ["RS"], QUATERNARY: ["≡"] };
     stage.insertAdjacentHTML("beforeend", `<div style="position:absolute;left:0;right:0;bottom:0;height:128px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.82) 55%)"></div>`);
     const btn = b => {
-      const k = GLYPH[b.key.replace("UI_SHORTCUT_", "")] || ["?"];
+      // add-on actions that inherit a UI shortcut's key show that key's glyph
+      const k = GLYPH[b.key.replace(/^SBR_SCOREBOARD_OPEN_/, "").replace("UI_SHORTCUT_", "")] || ["?"];
       const g = k[1] ? `<span style="display:inline-grid;place-items:center;width:40px;height:40px;border-radius:50%;background:${k[1]};color:#111;font:700 22px 'Barlow Condensed';box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)">${k[0]}</span>`
         : `<span style="display:inline-grid;place-items:center;min-width:46px;height:34px;padding:0 6px;border-radius:${k[0].endsWith("S") ? "50%" : "8px"};background:#d6d2c6;color:#111;font:700 20px 'Barlow Condensed'">${k[0]}</span>`;
       return `<span style="display:inline-flex;align-items:center;gap:12px;margin-right:30px">${g}<span style="font:500 34px 'Barlow Condensed';color:#fff;text-transform:uppercase;white-space:nowrap;text-shadow:2px 2px 2px #000">${b.name}</span></span>`;
