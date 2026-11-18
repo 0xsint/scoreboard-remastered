@@ -271,6 +271,16 @@ end
 function UI:Create()
     if self.control then return end
     self.style = STYLES.keyboard
+    -- dims the native scoreboard behind the panel in "over" mode
+    local dim = WM:CreateTopLevelWindow("ScoreboardRemasteredDim")
+    dim:SetAnchorFill(GuiRoot)
+    dim:SetDrawLayer(DL_OVERLAY)
+    dim:SetDrawTier(DT_MEDIUM)
+    dim:SetHidden(true)
+    local dimTex = CreateTexture(dim, 0, 0, 0, 0.62)
+    dimTex:SetAnchorFill(dim)
+    self.dim = dim
+
     local tlw = WM:CreateTopLevelWindow("ScoreboardRemasteredWindow")
     self.control = tlw
     tlw:SetHidden(true)
@@ -459,7 +469,15 @@ function UI:ApplyPosition()
         return
     end
     local native = SBR.Hook and SBR.Hook:GetAnchorControl()
-    local mode = SBR.sv.attach or "right"
+    local mode = SBR.sv.attach or "over"
+    if self.dim then self.dim:SetHidden(true) end
+    if mode == "over" then
+        -- centred, a little left so the details pane fits on the right; a dim layer
+        -- behind the panel keeps the native board from showing through
+        c:SetAnchor(CENTER, GuiRoot, CENTER, -math.floor(self.style.detailsW / 2), -30)
+        if self.dim and native then self.dim:SetHidden(false) end
+        return
+    end
     if native and mode ~= "free" then
         if mode == "left" then
             c:SetAnchor(TOPRIGHT, native, TOPLEFT, -8, 0)
@@ -660,7 +678,8 @@ function UI:RefreshDetails()
     local pane, tlw = self.details, self.control
     pane:ClearAnchors()
     local right = (tlw:GetRight() or 0) + s.detailsW + 8
-    if right > (GuiRoot:GetWidth() or 1920) then
+    local roomRight = self.mode == "gamepad" or (SBR.sv.attach or "over") == "over"
+    if not roomRight and right > (GuiRoot:GetWidth() or 1920) then
         pane:SetAnchor(TOPRIGHT, tlw, TOPLEFT, -8, 0)
     else
         pane:SetAnchor(TOPLEFT, tlw, TOPRIGHT, 8, 0)
@@ -1066,6 +1085,7 @@ function UI:Hide(force)
     self.pinned = false
     self:CloseDetails()
     self.control:SetHidden(true)
+    if self.dim then self.dim:SetHidden(true) end
     HideTooltip()
 end
 

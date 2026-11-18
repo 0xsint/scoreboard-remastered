@@ -115,6 +115,7 @@ function ML:ApplyInfo(match, info)
         local existing = match.teams[id] or {}
         existing.id, existing.name, existing.color = id, t.name, t.color
         if t.score ~= nil then existing.score = t.score end
+        if t.roundsWon ~= nil then existing.roundsWon = t.roundsWon end
         match.teams[id] = existing
     end
     if SBR.Battleground:IsRunning(info.state) and not match.runningSince then
@@ -206,19 +207,27 @@ function ML:StopPeriodic()
 end
 
 local function DetermineResult(match)
+    -- multi-round modes are decided by rounds won, everything else by score
+    local useRounds = false
+    for _, t in pairs(match.teams or {}) do
+        if type(t.roundsWon) == "number" and t.roundsWon > 0 then useRounds = true end
+    end
+    local function value(t) if useRounds then return t.roundsWon else return t.score end end
     local best, bestTeam, tie = nil, nil, false
     for id, t in pairs(match.teams or {}) do
-        if type(t.score) == "number" then
-            if best == nil or t.score > best then
-                best, bestTeam, tie = t.score, id, false
-            elseif t.score == best then
+        local v = value(t)
+        if type(v) == "number" then
+            if best == nil or v > best then
+                best, bestTeam, tie = v, id, false
+            elseif v == best then
                 tie = true
             end
         end
     end
     match.winner = (not tie) and bestTeam or nil
     if not match.localTeam or best == nil then return "unknown" end
-    if tie and match.teams[match.localTeam] and match.teams[match.localTeam].score == best then return "tie" end
+    local mine = match.teams[match.localTeam]
+    if tie and mine and value(mine) == best then return "tie" end
     return match.winner == match.localTeam and "won" or "lost"
 end
 

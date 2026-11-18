@@ -3,7 +3,7 @@ local SBR = ScoreboardRemastered
 
 local DEFAULTS = {
     autoShowWithScoreboard = true,
-    attach = "right",
+    attach = "over",       -- over | right | left | below | free (see UI/Window.lua)
     scale = 1,
     groupByTeam = true,
     hideEmptyColumns = true,
@@ -45,7 +45,6 @@ local function RegisterEvents()
     On("EVENT_BATTLEGROUND_SCOREBOARD_UPDATED", function() SBR.MatchLog:RequestSnapshot() end)
     On("EVENT_BATTLEGROUND_KILL", function(_, ...) SBR.MatchLog:OnKill(...) end)
     On("EVENT_MEDAL_AWARDED", function(_, medalId, name, icon, value) SBR.MatchLog:OnMedal(medalId, name, icon, value) end)
-    On("EVENT_BATTLEGROUND_ROUND_CHANGED", function() SBR.MatchLog:RequestSnapshot() end)
 end
 
 local HELP = {
@@ -57,7 +56,7 @@ local HELP = {
     "/sbr db - battleground records (matches and players)",
     "/sbr players - battleground records, players tab",
     "/sbr reset - reset panel position",
-    "/sbr attach right|left|below|free",
+    "/sbr attach over|right|left|below|free",
     "/sbr clear - delete saved history",
     "/sbr status - LibFights state and score types",
     "/sbr hooks - which native scoreboard parts were hooked",

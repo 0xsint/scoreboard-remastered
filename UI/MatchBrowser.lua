@@ -29,16 +29,16 @@ local ROW_H = 86
 local LIST_W = 760
 local CARD_W = 980
 
--- Item icons (class, medals, abilities) come from the game API. These are ESO
--- interface art used for the stat tiles; each sits on a coloured badge with a
--- text label, so a moved path only loses the picture.
+-- Item icons (class, medals, abilities) come from the game API. The stat-tile icons
+-- are ESO interface art that the game's own UI references (checked against the
+-- esoui source, API 101051). Each still sits on a coloured badge with a text label.
 local ICONS = {
-    kills = "EsoUI/Art/TreeIcons/achievements_indexIcon_combat_up.dds",
+    kills = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_deathmatch.dds",
     deaths = "EsoUI/Art/DeathRecap/deathRecap_killingBlow_icon.dds",
-    assists = "EsoUI/Art/TreeIcons/achievements_indexIcon_ava_up.dds",
-    damage = "EsoUI/Art/TreeIcons/achievements_indexIcon_combat_up.dds",
-    healing = "EsoUI/Art/TreeIcons/achievements_indexIcon_skills_up.dds",
-    score = "EsoUI/Art/TreeIcons/achievements_indexIcon_summary_up.dds",
+    assists = "EsoUI/Art/Campaign/overview_indexIcon_bonus_up.dds",
+    damage = "EsoUI/Art/Battlegrounds/Gamepad/gp_battlegrounds_tabIcon_competitive.dds",
+    healing = "EsoUI/Art/Champion/champion_points_health_icon.dds",
+    score = "EsoUI/Art/Campaign/overview_indexIcon_scoring_up.dds",
     highlight = "EsoUI/Art/Miscellaneous/listItem_highlight.dds",
     divider = "EsoUI/Art/Miscellaneous/horizontalDivider.dds",
 }
@@ -927,7 +927,12 @@ function MB:Init()
     -- keyboard / mouse version of the same screen (opened from the PC inventory)
     local kb = ZO_Scene:New(self.keyboardSceneName, SCENE_MANAGER)
     kb:AddFragment(self.fragment)
-    if KEYBIND_STRIP_FADE_FRAGMENT then kb:AddFragment(KEYBIND_STRIP_FADE_FRAGMENT) end
+    -- mouse cursor, keybind strip and the UI shortcut key layer, like every ESO window
+    if FRAGMENT_GROUP and FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW then
+        kb:AddFragmentGroup(FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW)
+    elseif KEYBIND_STRIP_FADE_FRAGMENT then
+        kb:AddFragment(KEYBIND_STRIP_FADE_FRAGMENT)
+    end
     kb:RegisterCallback("StateChange", function(_, newState)
         if newState == SCENE_SHOWN then MB:OnShown()
         elseif newState == SCENE_HIDING then MB:OnHiding() end

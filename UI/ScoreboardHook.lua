@@ -39,6 +39,31 @@ local function IsScoreboardName(name)
     return n:find("battleground", 1, true) and n:find("scoreboard", 1, true)
 end
 
+-- The battleground scoreboard scenes push their own key layers ("BattlegroundScoreboard",
+-- "BattlegroundBlocking") but not ESO's UI shortcut layer, so a UI_SHORTCUT_* button
+-- added to the strip would show and never fire. While the native scoreboard is open
+-- in gamepad mode the add-on pushes that layer itself (only if it isn't already
+-- active). Unhandled keys pass straight through it: ZO_KeybindStrip_HandleKeybindDown
+-- only consumes keys that a strip button claims.
+local function ShortcutLayerName()
+    return SI_KEYBINDINGS_LAYER_USER_INTERFACE_SHORTCUTS and GetString(SI_KEYBINDINGS_LAYER_USER_INTERFACE_SHORTCUTS) or nil
+end
+
+function Hook:PushShortcutLayer()
+    local layer = ShortcutLayerName()
+    if not layer or self.pushedLayer then return end
+    if SBR.API("IsActionLayerActiveByName", layer) then return end
+    SBR.API("PushActionLayerByName", layer)
+    self.pushedLayer = layer
+end
+
+function Hook:RemoveShortcutLayer()
+    if self.pushedLayer then
+        SBR.API("RemoveActionLayerByName", self.pushedLayer)
+        self.pushedLayer = nil
+    end
+end
+
 function Hook:OnVisibility(id, control, newState)
     if SHOWN[newState] then
         self.visible[id] = control or true
@@ -47,6 +72,7 @@ function Hook:OnVisibility(id, control, newState)
         SBR.MatchLog:RequestSnapshot()
         if SBR.IsGamepad() then
             -- no cursor: offer a button on the native scoreboard's keybind strip instead
+            self:PushShortcutLayer()
             SBR.Gamepad:AddOpenKeybind()
         else
             SBR.Window:OnNativeShown()
@@ -56,6 +82,7 @@ function Hook:OnVisibility(id, control, newState)
         if next(self.visible) == nil then
             SBR.Debug("native scoreboard hidden (%s)", id)
             SBR.Gamepad:RemoveOpenKeybind()
+            self:RemoveShortcutLayer()
             if not SBR.IsGamepad() then SBR.Window:OnNativeHidden() end
         end
     end
@@ -65,7 +92,12 @@ function Hook:IsNativeVisible()
     return next(self.visible) ~= nil
 end
 
+-- The native top level (ZO_BattlegroundScoreboardTopLevel) fills the whole screen;
+-- the visible board is its "Backgrounds" child (about 1300 x 900, centred), so
+-- relative placement uses that.
 function Hook:GetAnchorControl()
+    local board = _G.ZO_BattlegroundScoreboardTopLevelBackgrounds
+    if board and not board:IsHidden() and self:IsNativeVisible() then return board end
     if self.anchorControl and not self.anchorControl:IsHidden() then return self.anchorControl end
     for _, name in ipairs(CONTROL_NAMES) do
         local c = _G[name]

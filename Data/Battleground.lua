@@ -72,6 +72,8 @@ function BG:GetTeamRange()
 end
 
 function BG:GetTeamName(team)
+    local name = SBR.API("GetBattlegroundTeamName", team)
+    if type(name) == "string" and name ~= "" then return SBR.CleanName(name) end
     for _, prefix in ipairs({ "SI_BATTLEGROUNDTEAM", "SI_BATTLEGROUNDALLIANCE" }) do
         local ok, s = pcall(GetString, prefix, team)
         if ok and s and s ~= "" then return s end
@@ -102,11 +104,10 @@ function BG:GetStateName(state)
     if state == nil then return "Unknown" end
     local names = {
         BATTLEGROUND_STATE_NONE = "None",
-        BATTLEGROUND_STATE_PREGAME = "Pre-game",
+        BATTLEGROUND_STATE_PREROUND = "Round starting",
         BATTLEGROUND_STATE_STARTING = "Starting",
         BATTLEGROUND_STATE_RUNNING = "Running",
         BATTLEGROUND_STATE_POSTROUND = "Round over",
-        BATTLEGROUND_STATE_POSTGAME = "Finished",
         BATTLEGROUND_STATE_FINISHED = "Finished",
     }
     for constName, label in pairs(names) do
@@ -129,7 +130,8 @@ function BG:ReadMatchInfo()
     info.battlegroundId = SBR.API("GetCurrentBattlegroundId")
     if info.battlegroundId then
         info.name = SBR.API("GetBattlegroundName", info.battlegroundId)
-        info.gameType = SBR.API("GetBattlegroundGameType", info.battlegroundId)
+        info.gameType = SBR.API("GetCurrentBattlegroundGameType", self:GetRoundIndex())
+            or SBR.API("GetBattlegroundGameType", info.battlegroundId, self:GetRoundIndex())
         if info.gameType then
             local ok, s = pcall(GetString, "SI_BATTLEGROUNDGAMETYPE", info.gameType)
             info.gameTypeName = ok and s ~= "" and s or nil
@@ -145,25 +147,45 @@ function BG:ReadMatchInfo()
     info.localTeam = self:GetLocalTeam()
     info.shutdownTimer = SBR.API("GetCurrentBattlegroundShutdownTimer")
 
+    -- GetCurrentBattlegroundScore(roundIndex, team): the score of the current round,
+    -- the same call the native scoreboard makes. Multi-round modes also record rounds won.
     info.teams = {}
     local first, last = self:GetTeamRange()
+    local round = info.roundIndex or 1
     for team = first, last do
         info.teams[team] = {
             id = team,
             name = self:GetTeamName(team),
             color = self:GetTeamColorHex(team),
-            score = SBR.API("GetCurrentBattlegroundScore", team),
+            score = SBR.API("GetCurrentBattlegroundScore", round, team),
+            roundsWon = (info.numRounds or 1) > 1 and SBR.API("GetCurrentBattlegroundRoundsWonByTeam", team) or nil,
         }
     end
     return info
 end
 
+-- Mirrors ZO_BattlegroundMedalInfo (battlegroundmedalinfo_shared.lua): a nil round
+-- index means the whole match, read through the cumulative medal API; a round
+-- index reads that round. Both walk medal ids with a "next id" iterator.
+local function MedalIterator(entryIndex, roundIndex)
+    if roundIndex == nil and SBR.HasAPI("GenerateCumulativeMedalInfoForScoreboardEntry") then
+        SBR.API("GenerateCumulativeMedalInfoForScoreboardEntry", entryIndex, BG:GetRoundIndex())
+        return function(last) return SBR.API("GetNextBattlegroundCumulativeMedalId", last) end,
+               function(id) return SBR.API("GetBattlegroundCumulativeNumEarnedMedalsById", id) end
+    end
+    return function(last) return SBR.API("GetNextScoreboardEntryMedalId", entryIndex, roundIndex, last) end,
+           function(id) return SBR.API("GetScoreboardEntryNumEarnedMedalsById", entryIndex, id, roundIndex) end
+end
+
 local function ReadMedals(entryIndex, roundIndex)
     local medals = {}
-    local count = SBR.API("GetScoreboardEntryNumEarnedMedals", entryIndex, roundIndex) or 0
-    for m = 1, count do
-        local medalId, medalCount = SBR.API("GetScoreboardEntryMedalInfo", entryIndex, m, roundIndex)
-        if medalId then
+    local nextId, countOf = MedalIterator(entryIndex, roundIndex)
+    local medalId = nextId(nil)
+    local guard = 0
+    while medalId and guard < 64 do
+        guard = guard + 1
+        local medalCount = countOf(medalId)
+        do
             local name, icon, condition, scoreReward = SBR.API("GetMedalInfo", medalId)
             medals[#medals + 1] = {
                 id = medalId,
@@ -174,7 +196,9 @@ local function ReadMedals(entryIndex, roundIndex)
                 scoreReward = scoreReward,
             }
         end
+        medalId = nextId(medalId)
     end
+    table.sort(medals, function(a, b) return (a.count or 0) > (b.count or 0) end)
     return medals
 end
 
@@ -197,7 +221,8 @@ function BG:ReadEntries(roundIndex)
             if e.classId then
                 local className = SBR.API("GetClassName", GENDER_MALE or 1, e.classId)
                 e.className = className and SBR.CleanName(className) or nil
-                e.classIcon = SBR.API("GetClassIcon", e.classId)
+                -- ZO_GetClassIcon is the real function; GetClassIcon is only a PC compatibility alias
+                e.classIcon = SBR.API("ZO_GetClassIcon", e.classId) or SBR.API("GetClassIcon", e.classId)
             end
             for _, st in ipairs(types) do
                 local v = SBR.API("GetScoreboardEntryScoreByType", i, st.id, roundIndex)
