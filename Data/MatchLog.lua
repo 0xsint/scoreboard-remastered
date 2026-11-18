@@ -24,9 +24,112 @@ local function Sanitize(v, depth)
     return out
 end
 
+-- Saved variables are rebuilt in full on every /reloadui and login, before any add-on
+-- code runs, and that counts against ESO's load-time CPU budget. So the kill feed's
+-- death recaps, most of a saved match, are stored as one string per hit
+-- ("hit|crit|ability|source") instead of a table per hit.
+local RECAP_SEP = "\31"
+
+function ML.EncodeRecap(hits)
+    if not hits then return nil end
+    local out = {}
+    for i, h in ipairs(hits) do
+        if type(h) == "string" then
+            out[i] = h
+        else
+            out[i] = table.concat({ tostring(math.floor((h.hit or 0) + 0.5)), h.crit and "1" or "",
+                ((h.ability or ""):gsub(RECAP_SEP, " ")), ((h.source or ""):gsub(RECAP_SEP, " ")) }, RECAP_SEP)
+        end
+    end
+    return #out > 0 and out or nil
+end
+
+-- A kill's recap as tables, whichever way it was saved.
+function ML.DecodeRecap(kill)
+    local out = {}
+    for i, h in ipairs(kill and kill.recap or {}) do
+        if type(h) == "table" then
+            out[i] = h
+        else
+            local hit, crit, ability, source = h:match("^(.-)" .. RECAP_SEP .. "(.-)" .. RECAP_SEP .. "(.-)" .. RECAP_SEP .. "(.*)$")
+            out[i] = { hit = tonumber(hit) or 0, crit = crit == "1" or nil, ability = ability or "", source = source or "" }
+        end
+    end
+    return out
+end
+
+local OLD_DEFAULT_HISTORY = 50
+local NEW_DEFAULT_HISTORY = 20
+
 function ML:Init(sv)
     self.sv = sv
     sv.history = sv.history or {}
+    -- 1.4: fewer full scoreboards by default (every older match is still a summary in
+    -- the records); a value someone picked themselves is kept
+    if not sv.historyDefault14 then
+        sv.historyDefault14 = true
+        if sv.maxHistory == OLD_DEFAULT_HISTORY then sv.maxHistory = NEW_DEFAULT_HISTORY end
+        if sv.maxPlayers == 2000 then sv.maxPlayers = 1000 end
+    end
+end
+
+-- After login: shrink what older versions saved, a small step at a time (one match,
+-- or a few hundred entries, every 200 ms), never at load time:
+--   1. trim history to maxHistory (every match is still a record in the database)
+--   2. store kill-feed recaps as strings
+--   3. forget "already counted" match ids that are no longer in history
+--   4. trim the player index to maxPlayers, longest-unseen first
+local CHUNK = 200
+
+function ML:StartBackgroundCompaction()
+    if self.compacting then return end
+    self.compacting = true
+    local ns = SBR.name .. "_Compact"
+    local phase, i = 1, 1
+    local appliedKey, inHistory
+    EVENT_MANAGER:RegisterForUpdate(ns, 200, function()
+        local sv, DB = self.sv, SBR.MatchDB
+        if phase == 1 then
+            if #sv.history > (sv.maxHistory or NEW_DEFAULT_HISTORY) then table.remove(sv.history, 1) return end
+            phase = 2
+        elseif phase == 2 then
+            local m = sv.history[i]
+            if not m then phase = 3 return end
+            for _, k in ipairs(m.killFeed or {}) do
+                if k.recap and type(k.recap[1]) == "table" then k.recap = ML.EncodeRecap(k.recap) end
+            end
+            i = i + 1
+        elseif phase == 3 then
+            if not (DB and DB.applied) then phase = 4 return end
+            if not inHistory then
+                inHistory = {}
+                for _, m in ipairs(sv.history) do if m.id then inHistory[m.id] = true end end
+                if sv.current and sv.current.id then inHistory[sv.current.id] = true end
+            end
+            for _ = 1, CHUNK do
+                local nextKey = next(DB.applied, appliedKey)
+                if nextKey == nil then phase = 4 return end
+                if not inHistory[nextKey] then
+                    -- removing the current key is safe for next(); step past it first
+                    DB.applied[nextKey] = nil
+                else
+                    appliedKey = nextKey
+                end
+            end
+        else
+            local max = sv.maxPlayers or 1000
+            local count, oldestKey, oldest = 0, nil, nil
+            for k, e in pairs(DB and DB.players or {}) do
+                count = count + 1
+                if not e.isYou and (not oldest or (e.lastSeen or 0) < oldest) then oldestKey, oldest = k, e.lastSeen or 0 end
+            end
+            if count > max and oldestKey then
+                DB.players[oldestKey] = nil
+            else
+                EVENT_MANAGER:UnregisterForUpdate(ns)
+            end
+        end
+    end)
 end
 
 function ML:GetCurrent()
@@ -266,7 +369,7 @@ function ML:Finalize(reason)
 
     table.insert(self.sv.history, match)
     if reason ~= "reload" or next(match.players or {}) then SBR.MatchDB:Add(match) end
-    local max = self.sv.maxHistory or 50
+    local max = self.sv.maxHistory or NEW_DEFAULT_HISTORY
     while #self.sv.history > max do table.remove(self.sv.history, 1) end
     self.sv.current = nil
 
@@ -338,18 +441,16 @@ function ML:OnKill(...)
     local match = self.sv.current
     if not match then return end
     local victimChar, victimDisplay, victimTeam, killerChar, killerDisplay, killerTeam, killType, abilityId = ...
+    -- only what is shown: every saved field is rebuilt on each load
     local entry = {
-        at = SBR.Now(),
-        t = match.startedMs and (GetGameTimeMilliseconds() - match.startedMs) / 1000 or nil,
-        victim = SBR.CleanName(victimChar), victimAccount = victimDisplay, victimTeam = victimTeam,
-        killer = SBR.CleanName(killerChar), killerAccount = killerDisplay, killerTeam = killerTeam,
-        killType = killType,
-        abilityId = type(abilityId) == "number" and abilityId or nil,
+        t = match.startedMs and math.floor((GetGameTimeMilliseconds() - match.startedMs) / 100) / 10 or nil,
+        victim = SBR.CleanName(victimChar), victimTeam = victimTeam,
+        killer = SBR.CleanName(killerChar), killerTeam = killerTeam,
     }
-    if entry.abilityId then entry.ability = SBR.CleanName(SBR.API("GetAbilityName", entry.abilityId) or "") end
+    if type(abilityId) == "number" then entry.ability = SBR.CleanName(SBR.API("GetAbilityName", abilityId) or "") end
     -- Death recap for any player whose last hits the client saw (you and your group's fights).
     if SBR.FightTracker.ledger and entry.victim ~= "" then
-        entry.recap = SBR.FightTracker:GetRecentHits(entry.victim, 15000)
+        entry.recap = ML.EncodeRecap(SBR.FightTracker:GetRecentHits(entry.victim, 15000))
     end
     table.insert(match.killFeed, entry)
     self:RequestSnapshot()

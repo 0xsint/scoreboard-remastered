@@ -659,7 +659,7 @@ function MB:RenderMatch(r)
 
     local stored = SBR.MatchDB:FindMatch(r.id) ~= nil
     self.footer:SetText(stored and "Full scoreboard, kill feed and recaps stored. Press A to open."
-        or string.format("Summary only: full scoreboards are kept for the last %d matches.", SBR.sv.maxHistory or 50))
+        or string.format("Summary only: full scoreboards are kept for the last %d matches.", SBR.sv.maxHistory or 20))
 end
 
 function MB:RenderLifetime(a)

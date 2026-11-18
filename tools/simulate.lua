@@ -1300,6 +1300,8 @@ if SCREENS_OUT then
     fh2:close()
 end
 
+if os.getenv("SIM_SVSIZE") then dofile(os.getenv("SIM_SVSIZE")) end
+
 if PROFILE then
     local keys = {}
     for k in pairs(PROFILE) do keys[#keys + 1] = k end

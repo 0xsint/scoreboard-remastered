@@ -222,14 +222,7 @@ local function ReadMedals(entryIndex, roundIndex)
         guard = guard + 1
         local medalCount = countOf(medalId)
         local info = MedalInfo(medalId)
-        medals[#medals + 1] = {
-            id = medalId,
-            count = medalCount or 1,
-            name = info.name,
-            icon = info.icon,
-            condition = info.condition,
-            scoreReward = info.scoreReward,
-        }
+        medals[#medals + 1] = { id = medalId, count = medalCount or 1, name = info.name, icon = info.icon }
         medalId = nextId(medalId)
     end
     table.sort(medals, function(a, b) return (a.count or 0) > (b.count or 0) end)

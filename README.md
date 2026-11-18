@@ -105,7 +105,7 @@ In 2-team modes, an enemy's damage done is all their damage. The native scoreboa
 Damage/Healing columns stay authoritative for everyone.
 
 Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
-(`history`, 50 by default). A match still in progress (`current`) survives `/reloadui`.
+(`history`, 20 by default, 10 on console). A match still in progress (`current`) survives `/reloadui`.
 
 ## Using it
 
@@ -209,13 +209,13 @@ A records screen usable anywhere, not just in battlegrounds:
   scoreboard layout → List** uses ESO's gamepad list screen instead.
 
 **Matches tab:** every match you've played. Each finished match writes a compact record
-(500 kept on PC, 150 on console), so this outlasts full scoreboards. The card shows the
+(500 kept on PC, 150 on console), so this outlasts full scoreboards (20 on PC, 10 on console). The card shows the
 result banner, team scores, six stat tiles, your rank and the match MVP, medals and top
 abilities. Y / Triangle switches to lifetime stats: win rate, K/D, bests, by class and
 by map.
 
 **Players tab:** everyone you've shared a battleground with, including your own profile
-across all your characters (2000 players kept on PC, 400 on console). Each player shows:
+across all your characters (1000 players kept on PC, 400 on console). Each player shows:
 - whether they've been your **teammate**, **opponent** or both, and your win-loss record
   with them and against them
 - their totals and per-match averages for kills, deaths, assists, damage, healing and
@@ -378,6 +378,32 @@ own (protected) input handling, and all three are gone:
 None of the functions the add-on calls are private or protected (`tools/check-api.py`).
 
 ## Performance
+
+### Loading (`/reloadui`, login)
+
+ESO rebuilds an add-on's saved variables in full on every load, before any add-on code
+runs, and that counts against the load-time CPU budget ("CPU budget reached"). So what
+is saved is kept small:
+
+- **Kill-feed recaps**, most of a saved match, are one short string per hit instead of
+  a table per hit. Kills keep only what's shown (time, killer, victim, teams, ability).
+  Medals keep id, count, name and icon.
+- **Player index:** abilities and classes are plain numbers, with one shared icon table.
+- **Fewer full scoreboards:** 20 by default on PC (was 50) and 10 on console. Every older
+  match is still in Battleground records as a summary. A setting you changed yourself is
+  kept. The player index keeps 1000 players on PC (was 2000) and 400 on console.
+- **No load-time work:** the windows are built the first time they open, and nothing
+  scans the global table.
+- **Older saves** shrink in the background after login, one small step every 200 ms
+  (about 47 s for 30 old matches): history trimmed to the limit, recaps converted,
+  forgotten match ids and extra players dropped. Nothing heavy runs at load.
+
+In the simulation (8 matches), a saved match went from about 4,160 table entries to
+about 2,440, and the default PC save from about 208,000 entries (50 matches) to about
+49,000 (20 matches). `lua5.1 tools/test-savedvars.lua` checks the encoding and the
+background compaction.
+
+### In battle
 
 The add-on keeps its work small enough for ESO's per-frame add-on budget (which consoles
 enforce strictly):

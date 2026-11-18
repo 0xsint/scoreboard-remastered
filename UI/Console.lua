@@ -158,7 +158,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredKill(k, match)
         { "Killing blow", k.ability ~= "" and k.ability or nil },
     }, true)
     local recap = {}
-    for _, h in ipairs(k.recap or {}) do
+    for _, h in ipairs(SBR.MatchLog.DecodeRecap(k)) do
         recap[#recap + 1] = { Fit((h.ability ~= "" and h.ability or "?") .. " · " .. (h.source ~= "" and h.source or "?")),
             N(h.hit) .. (h.crit and "*" or "") }
     end

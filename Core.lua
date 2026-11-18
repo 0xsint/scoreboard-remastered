@@ -13,12 +13,12 @@ local DEFAULTS = {
     lfSaveFights = false,  -- let LibFights also save battleground fights to its own SavedVariables
     trackCombat = true,    -- combat ledger: fight stats for every player on the scoreboard
     chatSummary = true,
-    maxHistory = 50,       -- 10 on console (smaller SavedVariables budget)
+    maxHistory = 20,       -- full scoreboards kept (10 on console); older matches stay as records
     gamepadOpenKey = "right_stick", -- button added to the native gamepad scoreboard
     replaceNativeScoreboard = true, -- our table instead of the native in-game scoreboard (UI/Replace.lua)
     consoleLayout = "table", -- gamepad scoreboard: "table" (the PC table) or "list" (native list screen)
     maxRecords = 500,      -- match database records (150 on console)
-    maxPlayers = 2000,     -- player index entries (400 on console)
+    maxPlayers = 1000,     -- player index entries (400 on console)
     inventoryButton = true, -- "Battleground records" in the inventory
     inventoryKey = "right_stick", -- gamepad inventory button
     debug = false,
@@ -38,6 +38,7 @@ local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
         SBR.Hook:Install() -- catch anything created after addon load
         SBR.Replace:Install()
+        SBR.MatchLog:StartBackgroundCompaction()
         SBR.InventoryHook:Install()
         SBR.LibFights:Init()
         SBR.MatchLog:OnPlayerActivated()
@@ -169,9 +170,9 @@ local function OnAddOnLoaded(_, addonName)
     SBR.Battleground:DiscoverScoreTypes()
     SBR.LibFights:Init()
     SBR.Hook:Install()
-    SBR.Window:Create()
+    -- the windows are built the first time they open, not here: load time counts
+    -- against ESO's CPU budget
     SBR.Gamepad:Init()
-    SBR.MatchBrowser:Init()
     SBR.InventoryHook:Install()
     SBR.Settings:Create()
     RegisterEvents()
