@@ -1047,6 +1047,7 @@ function UI:Refresh()
 end
 
 function UI:OnDataChanged()
+    if SBR.Console and SBR.Console.scoreboard then SBR.Console.scoreboard:OnDataChanged() end
     if self.viewIndex == nil then self:Refresh() end
 end
 

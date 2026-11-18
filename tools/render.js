@@ -251,6 +251,94 @@ function pageMain(screen, native, FONTS, FACES) {
   }
   for (const s of screen.standins) standin(s);
 
+  // ESO gamepad framework screens (UI/Console.lua): drawn from the recorded header,
+  // list and tooltip state with ESO's layout and style constants
+  //   quadrant 1: x 56-526, content inset 40, list text from x 197, title area 96 px
+  //   quadrant 4 (GAMEPAD_RIGHT_TOOLTIP): x 1394-1864
+  //   fonts: entries ZoFontGamepad34 uppercase, entry headers ZoFontGamepadBold22,
+  //   header data labels ZoFontGamepad27, values ZoFontGamepadHeaderDataValue (42),
+  //   tooltip title 42 uppercase, stat 27 uppercase, value 42 (small 34), body 42 light
+  if (screen.console) {
+    const c = screen.console;
+    const H = c.header.data || {};
+    const add = h => stage.insertAdjacentHTML("beforeend", h);
+    const FC = "'Barlow Condensed'";
+    const shadow = "text-shadow:2px 2px 2px rgba(0,0,0,.95)";
+    // quadrant 1 and 4 backgrounds
+    add(`<div style="position:absolute;left:0;top:0;width:566px;height:1080px;background:linear-gradient(90deg,rgba(0,0,0,.88),rgba(8,10,12,.82));border-right:2px solid rgba(255,255,255,.12)"></div>`);
+    add(`<div style="position:absolute;left:1374px;top:0;width:546px;height:1080px;background:linear-gradient(270deg,rgba(0,0,0,.88),rgba(8,10,12,.8));border-left:2px solid rgba(255,255,255,.12)"></div>`);
+    // header: tab bar (or title) in the 96 px title area, divider, data pairs
+    const x0 = 96, w = 390;
+    let y = 54;
+    const tabs = H.tabBarEntries || [];
+    if (tabs.length) {
+      const i = (c.header.tab || 1) - 1;
+      const prev = tabs[(i - 1 + tabs.length) % tabs.length].text, next = tabs[(i + 1) % tabs.length].text;
+      add(`<div style="position:absolute;left:${x0}px;top:${y}px;width:${w}px;height:96px;display:flex;align-items:flex-end;justify-content:space-between;${shadow}">
+        <span style="font:500 22px ${FC};color:rgba(197,194,158,.55);text-transform:uppercase">‹ ${prev}</span>
+        <span style="font:500 48px ${FC};color:#fff;text-transform:uppercase;line-height:1">${tabs[i].text}</span>
+        <span style="font:500 22px ${FC};color:rgba(197,194,158,.55);text-transform:uppercase">${next} ›</span></div>`);
+    } else {
+      add(`<div style="position:absolute;left:${x0}px;top:${y}px;width:${w}px;height:96px;display:flex;align-items:flex-end;justify-content:center;font:300 54px ${FC};color:#fff;text-transform:uppercase;${shadow}">${markup(H.titleText)}</div>`);
+    }
+    y += 96 + 7;
+    add(`<div style="position:absolute;left:${x0}px;top:${y}px;width:${w}px;height:2px;background:rgba(255,255,255,.45)"></div>`);
+    y += 14;
+    for (let i = 1; i <= 4; i++) {
+      if (H["data" + i + "HeaderText"] == null) continue;
+      add(`<div style="position:absolute;left:${x0}px;top:${y}px;width:${w}px;height:46px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;${shadow}">
+        <span style="font:500 27px ${FC};color:#c5c29e;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${markup(H["data" + i + "HeaderText"])}</span>
+        <span style="font:500 42px ${FC};color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%">${markup(H["data" + i + "Text"])}</span></div>`);
+      y += 46;
+    }
+    // parametric list: selected entry full size and white, others scaled down and dimmed
+    const listTop = y + 34, listBottom = 1080 - 128 - 10;
+    const rows = c.entries.map((e, i) => ({ e, i, h: (e.header ? 34 : 0) + (i + 1 === c.selected ? 64 : 50) }));
+    let start = 0, used = 0;
+    // keep the selection about a third of the way down, like the parametric list
+    const before = rows.slice(0, c.selected - 1).reverse();
+    let budget = (listBottom - listTop) * 0.35;
+    start = c.selected - 1;
+    for (const r of before) { if (budget - r.h < 0) break; budget -= r.h; start = r.i; }
+    let yy = listTop;
+    for (const r of rows.slice(start)) {
+      if (yy + r.h > listBottom) break;
+      const sel = r.i + 1 === c.selected;
+      if (r.e.header) {
+        add(`<div style="position:absolute;left:197px;top:${yy}px;width:330px;font:700 22px ${FC};color:#c5c29e;text-transform:uppercase;${shadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${markup(r.e.header)}</div>`);
+        yy += 34;
+      }
+      const size = sel ? 34 : 27, icon = sel ? 52 : 40, hh = sel ? 64 : 50;
+      if (r.e.icon) add(`<div style="position:absolute;left:${180 - icon}px;top:${yy + (hh - icon) / 2}px;width:${icon}px;height:${icon}px;opacity:${sel ? 1 : .55}">${svgFor(r.e.icon, icon, icon)}</div>`);
+      add(`<div style="position:absolute;left:197px;top:${yy}px;width:${sel ? 360 : 320}px;height:${hh}px;display:flex;align-items:center;font:500 ${size}px ${FC};color:${sel ? "#fff" : "rgba(197,194,158,.62)"};text-transform:uppercase;${shadow}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${markup(r.e.text)}</span></div>`);
+      yy += hh;
+    }
+    // GAMEPAD_RIGHT_TOOLTIP in quadrant 4
+    let ty = 70;
+    const tx = 1434, tw = 390;
+    for (const sec of c.tooltip) {
+      for (const it of sec.items) {
+        if (ty > 1080 - 140) break;
+        if (it.kind === "pair") {
+          const vs = it.valueStyle === "statValuePairValueSmall" ? 34 : 42;
+          add(`<div style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;height:${vs + 4}px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;${shadow}">
+            <span style="font:500 27px ${FC};color:#d7d2c3;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${markup(it.stat)}</span>
+            <span style="font:500 ${vs}px ${FC};color:#fff;white-space:nowrap">${markup(it.value)}</span></div>`);
+          ty += vs + 6;
+        } else {
+          const st = it.style;
+          const css = st === "title" ? `font:500 42px ${FC};color:#fff;text-transform:uppercase`
+            : st === "bodyHeader" ? `font:500 27px ${FC};color:#fff;text-transform:uppercase`
+            : `font:300 ${sec.style === "bodyHeader" ? 27 : 34}px ${FC};color:#d7d2c3`;
+          const est = st === "title" ? 50 : st === "bodyHeader" ? 34 : (sec.style === "bodyHeader" ? 34 : 42);
+          add(`<div style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;${css};line-height:1.2;${shadow}">${markup(it.text)}</div>`);
+          ty += est;
+        }
+      }
+      ty += sec.style === "bodyHeader" ? 18 : 30;
+    }
+  }
+
   // add-on controls (top levels in creation order)
   for (const name of screen.draw) {
     const n = [...nodes.values()].find(x => x.name === name);

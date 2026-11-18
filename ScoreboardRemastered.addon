@@ -18,6 +18,8 @@ UI/Window.lua
 UI/Export.lua
 UI/ScoreboardHook.lua
 UI/Gamepad.lua
+UI/Console.lua
+UI/Console.xml
 UI/MatchBrowser.lua
 UI/InventoryHook.lua
 UI/Settings.lua

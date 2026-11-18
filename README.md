@@ -20,20 +20,23 @@ database opens from the inventory, anywhere in the game.
 **Gamepad / console: "Open Remastered" on the battleground scoreboard's button bar**
 ![Open Remastered on the native scoreboard](docs/screenshots/gamepad-native.jpg)
 
-**Gamepad: Scoreboard Remastered, a player's details open with A / Cross**
-![Gamepad scoreboard](docs/screenshots/gamepad-scoreboard.jpg)
+**Console: Scoreboard Remastered, Players tab (ESO's own gamepad list screen; details in the right tooltip)**
+![Console scoreboard](docs/screenshots/console-scoreboard.jpg)
 
-**Gamepad: kill feed with death recaps (Y / Triangle)**
-![Kill feed](docs/screenshots/gamepad-killfeed.jpg)
+**Console: Kill feed tab with the death recap of the selected kill**
+![Console kill feed](docs/screenshots/console-killfeed.jpg)
 
-**Battleground records: Matches tab**
-![Records, matches](docs/screenshots/records-matches.jpg)
+**Console: Match tab, your LibFights fights**
+![Console match](docs/screenshots/console-match.jpg)
 
-**Battleground records: lifetime stats**
-![Records, lifetime](docs/screenshots/records-lifetime.jpg)
+**Console: Battleground records, Matches tab**
+![Records, matches](docs/screenshots/console-records-matches.jpg)
 
-**Battleground records: Players tab (opponents sorted by who killed you most)**
-![Records, players](docs/screenshots/records-players.jpg)
+**Console: Battleground records, Players tab (opponents sorted by who killed you most)**
+![Records, players](docs/screenshots/console-records-players.jpg)
+
+**Console: Battleground records, Lifetime tab**
+![Records, lifetime](docs/screenshots/console-records-lifetime.jpg)
 
 **Gamepad inventory: Battleground records on the button bar**
 ![Gamepad inventory](docs/screenshots/gamepad-inventory.jpg)
@@ -118,73 +121,77 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 
 ### Console, or gamepad mode on PC
 
+The console screens are built on ESO's own gamepad framework, the same pieces the game's
+menus use: `ZO_Gamepad_ParametricList_Screen` for the list on the left, the generic gamepad
+header with a tab bar and data rows, the right-side gamepad tooltip for details, and the
+standard keybind strip. They look, scroll, sound and respond like the inventory or the
+leaderboards, and the details follow the selection, as in every ESO gamepad menu.
+
 While the native battleground scoreboard is open, its button bar gets
 **Open Remastered** (right stick click by default; you can change it in settings).
-That opens the panel on its own screen with your row selected:
+
+**Scoreboard Remastered** has three tabs:
+- **Players:** everyone in the match, grouped under team headers with team scores, your
+  row selected. The tooltip shows that player's score, K/D/A, damage, healing, rank,
+  medals, top abilities and LibFights fight stats.
+- **Kill feed:** newest first. The tooltip shows killer, victim, killing blow and the
+  last hits before death.
+- **Match:** overview, your LibFights fights and your deaths.
 
 | Xbox | PlayStation | Action |
 |---|---|---|
-| D-pad / left stick up, down | same | move the selected row |
-| D-pad / left stick left, right | same | sort by the previous / next column |
-| **A** | **Cross** | show / hide details for the selected row (they follow the selection) |
-| B | Circle | close the kill feed, then details, then the panel |
-| X | Square | flip the sort order |
-| Y | Triangle | kill feed (scroll with up/down, page with left/right) |
-| LB / RB | L1 / R1 | previous / next saved match |
-| L3 | L3 | group by team on / off |
+| LB / RB | L1 / R1 | previous / next tab |
+| Up / Down | same | select (details show on the right) |
+| LT / RT | L2 / R2 | page up / down |
+| X | Square | change the sort: score, kills, damage, healing, DPS (Players tab) |
+| Y | Triangle | Battleground records |
+| B | Circle | back |
 
-The gamepad table uses bigger text and fewer columns. The rest of the stats are in the
-details pane. Settings has an **Open Scoreboard Remastered** button so you can browse
-saved matches outside a battleground, since consoles have no slash commands. On console,
-10 matches are kept by default because console SavedVariables are smaller.
+Settings has an **Open Scoreboard Remastered** button so you can browse the last match
+outside a battleground, since consoles have no slash commands. On console, 10 full
+matches are kept by default because console SavedVariables are smaller.
 
 ### Battleground records: matches and players (open from the inventory)
 
-A records dialog with two tabs, usable anywhere, not just in battlegrounds:
+A records screen usable anywhere, not just in battlegrounds:
 
 - **Inventory:** on PC, a **Battleground records** button sits above the inventory window. On
   gamepad / console, **Battleground records** is on the inventory's button bar (right stick
-  click by default; you can change it in settings). Both open on the Players tab, and B / Esc
-  returns to the inventory.
-- **Also opens from:** R3 on the Scoreboard Remastered screen, the settings panel,
+  click by default; you can change it in settings). B / Esc returns to the inventory.
+- **Also opens from:** Y / Triangle on Scoreboard Remastered, the settings panel,
   `/sbr db` and `/sbr players`.
-- **Controls:** it works with a controller and with the mouse. Click a tab, row or the
-  filter line, use the mouse wheel to scroll, and double-click a match to open it.
+- **PC:** a mouse-driven window. Click a tab, row or the filter line, use the mouse wheel
+  to scroll, and double-click a match to open it.
 
 **Matches tab:** every match you've played. Each finished match writes a compact record
-(500 kept on PC, 150 on console), so this outlasts full scoreboards. Rows show the result,
-class icon, map, mode, date, duration, K/D/A and damage. The card shows:
-- the result banner and team scores
-- six stat tiles with icons
-- your rank and the match MVP
-- medals with icons, and top abilities with icons and bars
-- fight highlights
-
-Y / Triangle switches to your lifetime record: win rate, K/D, bests, by class and by map.
+(500 kept on PC, 150 on console), so this outlasts full scoreboards. On console the list
+is grouped by date; the tooltip shows the result, team scores, K/D/A, damage, healing,
+your rank, the match MVP, medals and top abilities.
 
 **Players tab:** everyone you've shared a battleground with, including your own profile
-across all your characters (2000 players kept on PC, 400 on console). Each player card shows:
+across all your characters (2000 players kept on PC, 400 on console). Each player shows:
 - whether they've been your **teammate**, **opponent** or both, and your win-loss record
   with them and against them
 - their totals and per-match averages for kills, deaths, assists, damage, healing and
   score, plus K/D
 - **you vs them:** how often they killed you and you killed them, damage each way and
   healing each way
-- the classes they've played (with icons) and their top abilities (with icons and bars)
+- the classes they've played and their top abilities
 - best score, medals, flags, the map you meet them on most, and their character names
 
 Filters: everyone, teammates, opponents, players who've killed you, and you.
 Sorts: most seen, last seen, kills, damage, healing, times they killed you, name.
 
+**Lifetime tab:** win rate, K/D, times MVP, streak, bests and totals, then by class and by map.
+
 | Xbox | PlayStation | Action |
 |---|---|---|
-| LB / RB | L1 / R1 | Matches / Players tab |
+| LB / RB | L1 / R1 | Matches / Players / Lifetime tab |
 | Up / Down | same | select |
-| Left / Right | same | change the filter |
-| A | Cross | open the match's full scoreboard (Matches tab, while stored) |
-| X | Square | change the sort |
-| Y | Triangle | match card / lifetime stats (Matches tab) |
 | LT / RT | L2 / R2 | page up / down |
+| A | Cross | open the match's full scoreboard (Matches tab, while stored) |
+| X | Square | change the filter |
+| Y | Triangle | change the sort |
 | B | Circle | back (to the inventory or the scoreboard) |
 
 ### Slash commands (PC)
@@ -239,7 +246,7 @@ out with ESO's anchor rules and draws them in a headless browser.
 
 | | |
 |---|---|
-| **Exact** | Layout: positions and sizes come from the add-on's own code, on ESO's 1920×1080 UI canvas. All text and numbers come from the add-on's real output. Font **sizes** come from ESO's font definitions (`EsoUI/FontDefs`, western strings), for example `ZoFontGamepad34` = 34 px and `ZoFontWinH1` = 30 px. Colours are what the add-on sets, including ESO's stock text colours (`ZO_NORMAL_TEXT` C5C29E, `ZO_SELECTED_TEXT` FFFFFF). The gamepad button bar follows `KEYBIND_STRIP_GAMEPAD_STYLE`: ZoFontGamepad34, uppercase, 96 px insets, 53 px from the bottom, 128 px background. Native positions also come from ESO's XML: the inventory window (565 px wide on the 575×750 right panel), the gamepad inventory panel (x 56–526) and the battleground board (~1124×810, centred). |
+| **Exact** | Layout: positions and sizes come from the add-on's own code, on ESO's 1920×1080 UI canvas. All text and numbers come from the add-on's real output. Font **sizes** come from ESO's font definitions (`EsoUI/FontDefs`, western strings), for example `ZoFontGamepad34` = 34 px and `ZoFontWinH1` = 30 px. Colours are what the add-on sets, including ESO's stock text colours (`ZO_NORMAL_TEXT` C5C29E, `ZO_SELECTED_TEXT` FFFFFF). The gamepad button bar follows `KEYBIND_STRIP_GAMEPAD_STYLE`: ZoFontGamepad34, uppercase, 96 px insets, 53 px from the bottom, 128 px background. The console screens use ESO's quadrant layout (list in x 56–526, tooltip in x 1394–1864) and its tooltip styles (title 42 px, stat 27 px uppercase, value 42 / 34 px). Native positions also come from ESO's XML: the inventory window (565 px wide on the 575×750 right panel), the gamepad inventory panel (x 56–526) and the battleground board (~1124×810, centred). |
 | **Approximated** | Font **faces**: ESO uses Univers 57/67 (keyboard) and Futura Condensed 47/57/87 (gamepad), which are licensed, so the renders use Barlow Semi Condensed and Barlow Condensed. ESO's art isn't redistributable, so backdrops, highlights and class, medal and ability icons are drawn as stand-ins. |
 | **Stand-ins** | Anything ESO itself draws (the 3D world, the native battleground scoreboard, both inventories, the PC keybind strip) is simplified and labelled in the image. Only the add-on's controls are rendered from its code. |
 
@@ -249,6 +256,8 @@ Rendering the real layout at ESO's real font sizes found layout bugs that are no
 - The details pane and the records dialog ran into the gamepad button bar.
 - The stat tiles drew their text badge over the icon.
 - The gamepad button labels were too long for ESO's strip.
+- The first custom console panels didn't look like ESO's console UI. They were replaced
+  with ESO's own gamepad list screen, header and tooltip.
 
 ## Checked against the ESO UI source
 

@@ -865,16 +865,7 @@ function MB:OpenSelected()
     local _, index = SBR.MatchDB:FindMatch(r.id)
     if not index then return end
     SBR.Window.viewIndex = index
-    SBR.Gamepad:Open()
-end
-
-function MB:UpdateDirectionalInput()
-    local v = self.vertical:CheckMovement()
-    local h = self.horizontal:CheckMovement()
-    if v == MOVEMENT_CONTROLLER_MOVE_NEXT then self:Move(1)
-    elseif v == MOVEMENT_CONTROLLER_MOVE_PREVIOUS then self:Move(-1) end
-    if h == MOVEMENT_CONTROLLER_MOVE_NEXT then self:CycleFilter(1)
-    elseif h == MOVEMENT_CONTROLLER_MOVE_PREVIOUS then self:CycleFilter(-1) end
+    SBR.Window:Show(true)
 end
 
 function MB:BuildKeybinds()
@@ -911,24 +902,13 @@ end
 ---------------------------------------------------------------------------
 -- scene
 ---------------------------------------------------------------------------
+-- This dialog is the PC (mouse) version. In gamepad mode, Open() hands over to the
+-- native console screen in UI/Console.lua.
 function MB:Init()
-    if self.scene or not (ZO_Scene and SCENE_MANAGER and KEYBIND_STRIP and DIRECTIONAL_INPUT and ZO_MovementController) then return end
+    if self.keyboardScene or not (ZO_Scene and SCENE_MANAGER and KEYBIND_STRIP) then return end
     self:Create()
     self.fragment = ZO_SimpleSceneFragment:New(self.control)
-    local scene = ZO_Scene:New(self.sceneName, SCENE_MANAGER)
-    scene:AddFragment(self.fragment)
-    if FRAGMENT_GROUP then
-        for _, group in ipairs({ FRAGMENT_GROUP.GAMEPAD_DRIVEN_UI_WINDOW, FRAGMENT_GROUP.GAMEPAD_KEYBIND_STRIP_GROUP }) do
-            if group then scene:AddFragmentGroup(group) end
-        end
-    end
-    scene:RegisterCallback("StateChange", function(_, newState)
-        if newState == SCENE_SHOWN then MB:OnShown()
-        elseif newState == SCENE_HIDING then MB:OnHiding() end
-    end)
-    self.scene = scene
 
-    -- keyboard / mouse version of the same screen (opened from the PC inventory)
     local kb = ZO_Scene:New(self.keyboardSceneName, SCENE_MANAGER)
     kb:AddFragment(self.fragment)
     -- mouse cursor, keybind strip and the UI shortcut key layer, like every ESO window
@@ -942,22 +922,24 @@ function MB:Init()
         elseif newState == SCENE_HIDING then MB:OnHiding() end
     end)
     self.keyboardScene = kb
-    self.vertical = ZO_MovementController:New(MOVEMENT_CONTROLLER_DIRECTION_VERTICAL)
-    self.horizontal = ZO_MovementController:New(MOVEMENT_CONTROLLER_DIRECTION_HORIZONTAL)
     self:BuildKeybinds()
 end
 
 function MB:IsShowing()
-    return (self.scene ~= nil and self.scene:IsShowing()) or (self.keyboardScene ~= nil and self.keyboardScene:IsShowing())
+    return self.keyboardScene ~= nil and self.keyboardScene:IsShowing()
 end
 
 -- tab: optional "matches" or "players"
 function MB:Open(tab)
+    if SBR.IsGamepad() then
+        if SBR.Console and SBR.Console.records then SBR.Console.records:Open(tab) end
+        return
+    end
     self:Init()
-    if not self.scene then return end
+    if not self.keyboardScene then return end
     if tab then self:SetTabSilently(tab) end
     if self:IsShowing() then return end
-    SCENE_MANAGER:Push(SBR.IsGamepad() and self.sceneName or self.keyboardSceneName)
+    SCENE_MANAGER:Push(self.keyboardSceneName)
 end
 
 function MB:SetTabSilently(tab)
@@ -976,18 +958,8 @@ function MB:OnShown()
     self:Reload()
     self:Render()
     KEYBIND_STRIP:AddKeybindButtonGroup(self.keybinds)
-    if SBR.IsGamepad() then
-        DIRECTIONAL_INPUT:Activate(self, self.control)
-        self.directional = true
-    elseif SCENE_MANAGER.IsInUIMode and not SCENE_MANAGER:IsInUIMode() then
-        SCENE_MANAGER:SetInUIMode(true) -- mouse cursor for the keyboard version
-    end
 end
 
 function MB:OnHiding()
-    if self.directional then
-        DIRECTIONAL_INPUT:Deactivate(self)
-        self.directional = false
-    end
     KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybinds)
 end

@@ -126,6 +126,7 @@ local function mockScene(name) return { name = name, cbs = {}, RegisterCallback 
 SCENE_MANAGER = { scenes = { inventory = mockScene("inventory"), gamepad_inventory_root = mockScene("gamepad_inventory_root") },
     IsInUIMode = function() return true end, SetInUIMode = function() end }
 function SCENE_MANAGER:GetScene(n) return self.scenes[n] or SCENES[n] end
+function SCENE_MANAGER:IsShowing(n) return SCENES[n] ~= nil and SCENES[n].showing == true end
 function SCENE_MANAGER:Push(name)
     local sc = SCENES[name]
     local top = sceneStack[#sceneStack]
@@ -172,7 +173,8 @@ KEYBIND_STRIP = { groups = {}, order = {}, AddKeybindButtonGroup = function(s, g
     RemoveKeybindButtonGroup = function(s, g)
         s.groups[g] = nil
         for i = #s.order, 1, -1 do if s.order[i] == g then table.remove(s.order, i) end end
-    end, UpdateKeybindButtonGroup = function() end }
+    end, UpdateKeybindButtonGroup = function() end,
+    GetDefaultGamepadBackButtonDescriptor = function() return KEYBIND_STRIP_BACK end }
 PushActionLayerByName = function(n) LAYERS = LAYERS or {}; LAYERS[n] = true end
 RemoveActionLayerByName = function(n) if LAYERS then LAYERS[n] = nil end end
 IsActionLayerActiveByName = function(n) return LAYERS and LAYERS[n] or false end
@@ -199,6 +201,111 @@ ZO_Scene = { New = function(_, name)
     return sc
 end }
 FRAGMENT_GROUP = { GAMEPAD_DRIVEN_UI_WINDOW = {}, GAMEPAD_KEYBIND_STRIP_GROUP = {}, MOUSE_DRIVEN_UI_WINDOW = {} }
+
+-- ESO gamepad framework stand-in (records what the add-on puts into it).
+-- Mirrors the API of ZO_Gamepad_ParametricList_Screen, ZO_GamepadEntryData, the
+-- generic header and GAMEPAD_TOOLTIPS used by UI/Console.lua.
+ZO_InitializingObject = {}
+ZO_InitializingObject.__index = ZO_InitializingObject
+function ZO_InitializingObject:Subclass()
+    local c = setmetatable({}, { __index = self })
+    c.__index = c
+    return c
+end
+function ZO_InitializingObject:New(...)
+    local o = setmetatable({}, self)
+    o:Initialize(...)
+    return o
+end
+ZO_FadeSceneFragment = { New = function(_, c) return { control = c } end }
+GAMEPAD_NAV_QUADRANT_1_BACKGROUND_FRAGMENT, MINIMIZE_CHAT_FRAGMENT, GAMEPAD_MENU_SOUND_FRAGMENT = {}, {}, {}
+ZO_GAMEPAD_HEADER_TABBAR_CREATE = true
+GAMEPAD_RIGHT_TOOLTIP = "GAMEPAD_RIGHT_TOOLTIP"
+function ZO_GamepadGenericHeader_Refresh(header, data) header.data = data; header.tab = header.tab or 1 end
+ZO_GamepadGenericHeader_RefreshData = ZO_GamepadGenericHeader_Refresh
+function ZO_GamepadGenericHeader_Activate(header) header.active = true end
+function ZO_GamepadGenericHeader_Deactivate(header) header.active = false end
+function ZO_GamepadGenericHeader_SetActiveTabIndex(header, i) header.tab = i end
+function ZO_Gamepad_AddListTriggerKeybindDescriptors(desc, list)
+    table.insert(desc, { keybind = "UI_SHORTCUT_LEFT_TRIGGER", name = "", ethereal = true, callback = function() list:Move(-10) end })
+    table.insert(desc, { keybind = "UI_SHORTCUT_RIGHT_TRIGGER", name = "", ethereal = true, callback = function() list:Move(10) end })
+end
+ZO_GamepadEntryData = {}
+ZO_GamepadEntryData.__index = ZO_GamepadEntryData
+function ZO_GamepadEntryData:New(text, icon) return setmetatable({ text = text, icon = icon }, self) end
+function ZO_GamepadEntryData:SetHeader(h) self.header = h end
+function ZO_GamepadEntryData:SetIconTintOnSelection(v) self.iconTint = v end
+function ZO_GamepadEntryData:SetNameColors() end
+local function NewList(screen)
+    local l = { entries = {}, selected = 1 }
+    function l:Clear() self.entries = {} end
+    function l:AddEntry(template, data) table.insert(self.entries, { template = template, data = data }) end
+    function l:Commit()
+        self.selected = math.min(math.max(1, self.selected), math.max(1, #self.entries))
+        screen:OnTargetChanged(self, self:GetTargetData())
+    end
+    function l:GetTargetData() local e = self.entries[self.selected]; return e and e.data end
+    function l:SetSelectedIndex(i)
+        self.selected = math.min(math.max(1, i), math.max(1, #self.entries))
+        screen:OnTargetChanged(self, self:GetTargetData())
+    end
+    function l:Move(d) self:SetSelectedIndex(self.selected + d) end
+    return l
+end
+ZO_Gamepad_ParametricList_Screen = ZO_InitializingObject:Subclass()
+function ZO_Gamepad_ParametricList_Screen:Initialize(control, createTabBar, activateOnShow, scene)
+    self.control = control
+    self.header = { tabBar = createTabBar }
+    self.list = NewList(self)
+    self.scene = scene
+    scene:RegisterCallback("StateChange", function(_, st)
+        if st == "showing" then
+            if self.keybindStripDescriptor then KEYBIND_STRIP:AddKeybindButtonGroup(self.keybindStripDescriptor) end
+            self:OnShowing()
+        elseif st == "hiding" then
+            if self.keybindStripDescriptor then KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybindStripDescriptor) end
+        elseif st == "hidden" then
+            self:OnHide()
+        end
+    end)
+    self:InitializeKeybindStripDescriptors()
+end
+function ZO_Gamepad_ParametricList_Screen:GetMainList() return self.list end
+function ZO_Gamepad_ParametricList_Screen:Update() self:PerformUpdate() end
+function ZO_Gamepad_ParametricList_Screen:RefreshKeybinds() end
+function ZO_Gamepad_ParametricList_Screen:OnTargetChanged() end
+function ZO_Gamepad_ParametricList_Screen:OnShowing() end
+function ZO_Gamepad_ParametricList_Screen:OnHide() end
+ZO_Tooltip = {}
+local function NewTooltip()
+    local tip = { sections = {} }
+    function tip:GetStyle(n) return n end
+    function tip:AcquireSection(style)
+        local sec = { style = style, items = {} }
+        function sec:AddLine(text, st) table.insert(self.items, { kind = "line", text = text, style = st }) end
+        function sec:AcquireStatValuePair(st)
+            local pair = { kind = "pair", style = st }
+            function pair:SetStat(t, st2) self.stat, self.statStyle = t, st2 end
+            function pair:SetValue(v, st2) self.value, self.valueStyle = v, st2 end
+            return pair
+        end
+        function sec:AddStatValuePair(pair) table.insert(self.items, { kind = "pair", stat = pair.stat, value = pair.value, valueStyle = pair.valueStyle }) end
+        return sec
+    end
+    function tip:AddSection(sec) table.insert(self.sections, sec) end
+    return setmetatable(tip, { __index = ZO_Tooltip })
+end
+GAMEPAD_TOOLTIPS = setmetatable({ current = {} }, { __index = function(t, k)
+    if k == "ClearTooltip" then return function(self, tt) self.current[tt] = nil end end
+    if type(k) == "string" and k:find("^Layout") then
+        return function(self, tt, ...)
+            local tip = NewTooltip()
+            ZO_Tooltip[k](tip, ...)
+            self.current[tt] = tip.sections
+        end
+    end
+end })
+KEYBIND_STRIP_BACK = { name = "Back", keybind = "UI_SHORTCUT_NEGATIVE", callback = function() SCENE_MANAGER:HideCurrentScene() end }
 ZO_CallbackObject = {}
 function ZO_CallbackObject:New()
     local o = { cbs = {} }
@@ -463,6 +570,9 @@ for _, f in ipairs(manifest(LFDIR .. "/LibFights.addon")) do
     if not ok then io.stderr:write("LF load error " .. f .. ": " .. tostring(err) .. "\n") end
 end
 for _, f in ipairs(manifest(ADDON .. "/ScoreboardRemastered.addon")) do dofile(ADDON .. "/" .. f) end
+-- UI/Console.xml: the two ZO_Gamepad_ParametricList_Screen top levels
+ScoreboardRemastered_ScoreboardConsole_OnInitialized(ctl("ScoreboardRemastered_ScoreboardConsole", nil, "toplevel"))
+ScoreboardRemastered_RecordsConsole_OnInitialized(ctl("ScoreboardRemastered_RecordsConsole", nil, "toplevel"))
 local SBR = ScoreboardRemastered
 fire(EVENT_ADD_ON_LOADED, "LibFights")
 fire(EVENT_ADD_ON_LOADED, "ScoreboardRemastered")
@@ -869,6 +979,33 @@ if SCREENS_OUT then
         return out
     end
     local SCREENS = {}
+    local function consoleState(scr)
+        local entries = {}
+        for i, e in ipairs(scr.list.entries) do
+            entries[i] = { text = e.data.text, icon = e.data.icon, header = e.data.header }
+        end
+        local tip = GAMEPAD_TOOLTIPS.current[GAMEPAD_RIGHT_TOOLTIP]
+        return { header = { data = scr.header.data, tab = scr.header.tab }, entries = entries, selected = scr.list.selected,
+                 tooltip = tip or {} }
+    end
+    local function consoleScreen(id, title, scr, standins)
+        SCREENS[#SCREENS + 1] = { id = id, title = title, mode = "gamepad", draw = {}, standins = standins or { "world" },
+            strip = (function()
+                local out = {}
+                for _, g in ipairs(KEYBIND_STRIP.order) do
+                    local grp = { align = g.alignment == KEYBIND_STRIP_ALIGN_RIGHT and "right" or "left", buttons = {} }
+                    for _, b in ipairs(g) do
+                        local vis = b.visible == nil or (type(b.visible) == "function" and b.visible()) or b.visible == true
+                        if vis and not b.ethereal then
+                            grp.buttons[#grp.buttons + 1] = { key = b.keybind, name = type(b.name) == "function" and b.name() or b.name }
+                        end
+                    end
+                    out[#out + 1] = grp
+                end
+                return out
+            end)(), trees = {}, console = consoleState(scr) }
+        io.stderr:write("screen " .. id .. "\n")
+    end
     local function screen(id, title, mode, draw, standins)
         SCREENS[#SCREENS + 1] = { id = id, title = title, mode = mode, draw = draw, standins = standins,
             strip = strip(), trees = roots(), shortcutLayer = IsActionLayerActiveByName("User Interface Shortcuts") }
@@ -900,37 +1037,31 @@ if SCREENS_OUT then
         "gamepad", {}, { "world", "nativeScoreboard" })
     nativeFragment.cb(nil, "hidden")
 
-    -- 3. Gamepad: the Remastered screen, a teammate selected, details open
-    GP:Open()
-    W:MoveSelection(2)
-    W:ToggleDetails()
-    screen("gamepad-scoreboard", "Gamepad: Scoreboard Remastered, a selected player's details (A / Cross)",
-        "gamepad", { "ScoreboardRemasteredWindow" }, { "world" })
+    -- 3-5. Console: Scoreboard Remastered (Players / Kill feed / Match)
+    local C = SBR.Console
+    GP:Open("players")
+    C.scoreboard.list:SetSelectedIndex(4)
+    consoleScreen("console-scoreboard", "Console: Scoreboard Remastered, Players tab", C.scoreboard)
+    C.scoreboard.tab = "kills"; C.scoreboard.header.tab = 2; C.scoreboard:Update()
+    C.scoreboard.list:SetSelectedIndex(1)
+    consoleScreen("console-killfeed", "Console: Scoreboard Remastered, Kill feed tab", C.scoreboard)
+    C.scoreboard.tab = "match"; C.scoreboard.header.tab = 3; C.scoreboard:Update()
+    C.scoreboard.list:SetSelectedIndex(2)
+    consoleScreen("console-match", "Console: Scoreboard Remastered, Match tab (your LibFights fights)", C.scoreboard)
+    C.scoreboard.tab = "players"; C.scoreboard.header.tab = 1
 
-    -- 4. Gamepad: kill feed reader (Y / Triangle)
-    W:CloseDetails()
-    SBR.Export:ShowKillFeed(W:GetViewedMatch())
-    screen("gamepad-killfeed", "Gamepad: kill feed with death recaps (Y / Triangle)",
-        "gamepad", { "ScoreboardRemasteredWindow", "ScoreboardRemasteredReader" }, { "world" })
-    SBR.Export.reader:Close()
-
-    -- 5-7. Battleground records (R3): Matches, Lifetime, Players
-    MB:Open("matches")
-    MB.selected, MB.offset = 1, 0
-    MB:Render()
-    screen("records-matches", "Gamepad: Battleground records, Matches tab",
-        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
-    MB.card = "life"
-    MB:Render()
-    screen("records-lifetime", "Gamepad: Battleground records, lifetime stats (Y / Triangle)",
-        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
-    MB.card = "match"
-    MB:SetTab("players")
-    MB.filter, MB.sort, MB.selected, MB.offset = 3, 6, 1, 0   -- Opponents, sorted by "Killed you"
-    MB.items = MB:Query()
-    MB:Render()
-    screen("records-players", "Gamepad: Battleground records, Players tab (opponents, sorted by who killed you most)",
-        "gamepad", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
+    -- 6-8. Console: Battleground records (Matches / Players / Lifetime), opened with Y / Triangle
+    C.records:Open("matches")
+    C.records.list:SetSelectedIndex(1)
+    consoleScreen("console-records-matches", "Console: Battleground records, Matches tab", C.records)
+    C.records.tab = "players"; C.records.header.tab = 2
+    C.records.state.players.filter, C.records.state.players.sort = 3, 6   -- Opponents, sorted by "Killed you"
+    C.records:Update()
+    C.records.list:SetSelectedIndex(1)
+    consoleScreen("console-records-players", "Console: Battleground records, Players tab (opponents, by who killed you most)", C.records)
+    C.records.tab = "lifetime"; C.records.header.tab = 3; C.records:Update()
+    C.records.list:SetSelectedIndex(1)
+    consoleScreen("console-records-lifetime", "Console: Battleground records, Lifetime tab", C.records)
     SCENE_MANAGER:HideCurrentScene()
     SCENE_MANAGER:HideCurrentScene()
 
