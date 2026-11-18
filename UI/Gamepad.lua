@@ -232,6 +232,15 @@ function GP:BuildKeybinds()
             callback = function() W:ToggleGroupByTeam(); GP:UpdateKeybinds() end,
         },
         {
+            name = "Report",
+            keybind = "UI_SHORTCUT_QUATERNARY",
+            visible = function() return W:CanOpenReport() end,
+            callback = function()
+                GP.coveredByChild = true
+                W:OpenReport()
+            end,
+        },
+        {
             name = "Records",
             keybind = "UI_SHORTCUT_RIGHT_STICK",
             callback = function()

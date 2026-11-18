@@ -658,7 +658,7 @@ function MB:RenderMatch(r)
     self.highlights:SetText(table.concat(hl, "   |c777777•|r   "))
 
     local stored = SBR.MatchDB:FindMatch(r.id) ~= nil
-    self.footer:SetText(stored and "Full scoreboard, kill feed and recaps stored. Press A to open."
+    self.footer:SetText(stored and "Full scoreboard, kill feed and recaps stored. Press A for the battle report."
         or string.format("Summary only: full scoreboards are kept for the last %d matches.", SBR.sv.maxHistory or 20))
 end
 
@@ -885,8 +885,7 @@ function MB:OpenSelected()
     if not r then return end
     local _, index = SBR.MatchDB:FindMatch(r.id)
     if not index then return end
-    SBR.Window.viewIndex = index
-    SBR.Window:Show(true)
+    SBR.ReportUI:Open(SBR.MatchLog:GetHistory()[index])
 end
 
 function MB:BuildKeybinds()
@@ -899,7 +898,7 @@ function MB:BuildKeybinds()
     local function sortLabels() return MB.tab == "players" and DB.PLAYER_SORT_LABELS or DB.SORT_LABELS end
     self.keybinds = {
         alignment = KEYBIND_STRIP_ALIGN_LEFT,
-        { name = "View scoreboard", keybind = "UI_SHORTCUT_PRIMARY",
+        { name = "Battle report", keybind = "UI_SHORTCUT_PRIMARY",
           callback = function() MB:OpenSelected() end, visible = selectedStored },
         { name = "Back", keybind = "UI_SHORTCUT_NEGATIVE", callback = function() MB:Close() end },
         { name = function() return "Sort: " .. sortLabels()[MB:SortKey()] end, keybind = "UI_SHORTCUT_SECONDARY",

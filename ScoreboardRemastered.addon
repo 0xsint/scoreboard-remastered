@@ -1,7 +1,7 @@
 ## Title: |c4FC3F7Scoreboard|r Remastered
 ## Author: Scoreboard Remastered contributors
-## Version: 1.6.1
-## AddOnVersion: 161
+## Version: 1.7.0
+## AddOnVersion: 170
 ## APIVersion: 101051
 ## Description: Remastered battleground scoreboard. Logs every stat the native scoreboard shows (all score types, medals, classes, teams, kill feed) plus fight data from LibFights, and attaches itself to the native battleground scoreboard.
 ## SavedVariables: ScoreboardRemasteredSV
@@ -14,6 +14,7 @@ Data/FightTracker.lua
 Data/LibFights.lua
 Data/MatchDB.lua
 Data/MatchLog.lua
+Data/Report.lua
 UI/Window.lua
 UI/Export.lua
 UI/ScoreboardHook.lua
@@ -22,6 +23,8 @@ UI/Gamepad.lua
 UI/Console.lua
 UI/Console.xml
 UI/MatchBrowser.lua
+UI/Report.lua
+UI/Launcher.lua
 UI/InventoryHook.lua
 UI/Settings.lua
 Core.lua

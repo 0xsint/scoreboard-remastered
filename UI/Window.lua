@@ -400,8 +400,10 @@ function UI:Create()
     self.exportButton:SetAnchor(RIGHT, footer, RIGHT, 0, 0)
     self.killsButton = button("Kill feed", 100, function() SBR.Export:ShowKillFeed(self:GetViewedMatch()) end)
     self.killsButton:SetAnchor(RIGHT, self.exportButton, LEFT, -4, 0)
+    self.reportButton = button("Report", 90, function() self:OpenReport() end)
+    self.reportButton:SetAnchor(RIGHT, self.killsButton, LEFT, -4, 0)
     self.groupButton = button("", 120, function() self:ToggleGroupByTeam() end)
-    self.groupButton:SetAnchor(RIGHT, self.killsButton, LEFT, -4, 0)
+    self.groupButton:SetAnchor(RIGHT, self.reportButton, LEFT, -4, 0)
 
     self.viewLabel = CreateLabel(footer)
     self.viewLabel:SetDimensions(260, 28)
@@ -919,6 +921,20 @@ function UI:CycleSort(delta)
     self.sort.key = cols[idx].key
     self.sort.desc = cols[idx].numeric == true
     self:Refresh()
+end
+
+-- Battle report of the viewed match (finished matches only)
+function UI:CanOpenReport()
+    local m = self:GetViewedMatch()
+    return m ~= nil and m.endedAt ~= nil
+end
+
+function UI:OpenReport()
+    if not self:CanOpenReport() then
+        SBR.Print("The battle report is ready when the match ends.")
+        return
+    end
+    SBR.ReportUI:Open(self:GetViewedMatch())
 end
 
 function UI:ToggleGroupByTeam()

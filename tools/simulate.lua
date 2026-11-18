@@ -614,6 +614,16 @@ function GetBattlegroundName() return CUR.map end
 function GetBattlegroundGameType() return CUR.gameTypeId end
 function GetBattlegroundTeamSize() return 8 end
 function GetCurrentBattlegroundState() return bgState end
+-- what a match earns (battle report haul): AP and champion XP grow with time played
+CURT_ALLIANCE_POINTS, CURRENCY_LOCATION_CHARACTER = 1, 1
+function GetCurrencyAmount() return 250000 + math.floor(simMs / 1000) * 9 end
+function GetUnitLevel() return 50 end
+function GetPlayerChampionPointsEarned() return 1400 + math.floor(simMs / 1500000) end
+function GetPlayerChampionXP() return math.floor(simMs / 4) % 375000 end
+function GetNumChampionXPInChampionPoint() return 375000 end
+function GetUnitAvARank() return 24 + math.floor(simMs / 2000000) end
+function GetUnitAvARankPoints() return 1800000 + math.floor(simMs / 1000) * 9 end
+function GetAvARankName() return "Prefect" end
 function GetUnitBattlegroundTeam() return ME.team end
 function GetCurrentBattlegroundScore(roundIndex, t)
     assert(type(roundIndex) == "number", "GetCurrentBattlegroundScore needs (roundIndex, team)")
@@ -1292,6 +1302,22 @@ if SCREENS_OUT then
     MB:Render()
     screen("pc-records", "PC: Battleground records with the mouse, Players tab",
         "keyboard", { "ScoreboardRemasteredMatchBrowser" }, { "world" })
+
+    -- Battle report (PC, then console)
+    local RP = SBR.ReportUI
+    IsInGamepadPreferredMode = function() return false end
+    RP:Open(nil, "overview")
+    screen("pc-report-overview", "PC: Battle report, Overview", "keyboard", { "ScoreboardRemasteredReport" }, { "world" })
+    RP:SetTab("timeline")
+    screen("pc-report-timeline", "PC: Battle report, Timeline", "keyboard", { "ScoreboardRemasteredReport" }, { "world" })
+    RP:SetTab("you")
+    screen("pc-report-you", "PC: Battle report, Your match", "keyboard", { "ScoreboardRemasteredReport" }, { "world" })
+    RP:Close()
+    IsInGamepadPreferredMode = function() return true end
+    RP:Open(nil, "timeline")
+    check(RP.gamepadScene:IsShowing(), "console report scene")
+    screen("console-report", "Console: Battle report, Timeline", "gamepad", { "ScoreboardRemasteredReport" }, { "world" })
+    RP:Close()
 
     -- data for the native stand-ins
     local final = FRAMES[#FRAMES]

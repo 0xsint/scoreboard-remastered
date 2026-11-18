@@ -184,6 +184,7 @@ function ML:Begin(info)
         columnsSeen = {},
     }
     self.sv.current = match
+    SBR.Report:OnBegin(match)
     self:StartTracking(match)
     SBR.Debug("match begin %s", match.id)
     return match
@@ -303,6 +304,7 @@ function ML:Snapshot()
 
     match.lastSnapshot = SBR.Now()
     match.elapsed = (GetGameTimeMilliseconds() - (match.startedMs or GetGameTimeMilliseconds())) / 1000
+    SBR.Report:Sample(match)
 
     -- Per-round snapshot of team scores so multi-round modes keep their history.
     if match.roundIndex then
@@ -388,6 +390,8 @@ function ML:Finalize(reason)
     match.endReason = reason
     match.result = reason == "finished" and DetermineResult(match) or (reason == "left" and "left" or "unknown")
     match.startedMs = nil
+    SBR.Report:OnFinalize(match)
+    if reason == "finished" then self.reportPending = match end
 
     table.insert(self.history, match)
     self:StoreMatch(match)

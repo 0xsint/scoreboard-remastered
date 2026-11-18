@@ -194,6 +194,37 @@ Settings has an **Open Scoreboard Remastered** button so you can browse the last
 outside a battleground, since consoles have no slash commands. On console, 10 full
 matches are kept by default because console SavedVariables are smaller.
 
+### Battle report
+
+When you leave a finished battleground, the battle report opens (setting **Battle report
+after each match**). It also opens with A / double-click on a match in the records, the
+**Report** button (PC) or the menu button (console) on the scoreboard table, and
+`/sbr report`. It has three tabs (LB / RB, or click):
+
+- **Overview:** the result, a **match balance** from 0 to 100 (red for a stomp, green for an
+  even fight: how close the final scores were, plus how often the lead changed hands),
+  team totals, the MVP, and every player's **title** for the match. A title is the stat
+  where that player came closest to the best in the match: Slayer, Vanguard (damage),
+  Lifeline (healing), Wingman (assists), Objective runner, Medalist, or Unbreakable (no
+  deaths).
+- **Timeline:** score over time, the damage race (team damage done) and momentum (kills
+  per minute, one team above the line, the others below), in team colours.
+- **Your match:** what it earned you (Alliance Points, experience including champion
+  XP, Champion Points, medals, Alliance rank, and a rank-up), your title, your medals,
+  and your profile against the best player in each category.
+
+A (Cross) or the Scoreboard button opens the full scoreboard while the match is stored.
+Recording costs almost nothing: one small sample of team totals every 15 seconds, taken
+with the normal scoreboard snapshots, saved packed with the match.
+
+**Records button (PC):** a small draggable battleground icon on the HUD that opens the
+records. Turn it off with **Records button on screen**.
+
+![Battle report, overview](docs/screenshots/pc-report-overview.jpg)
+![Battle report, timeline](docs/screenshots/pc-report-timeline.jpg)
+![Battle report, your match](docs/screenshots/pc-report-you.jpg)
+![Battle report on console](docs/screenshots/console-report.jpg)
+
 ### Battleground records: matches and players (open from the inventory)
 
 A records screen usable anywhere, not just in battlegrounds:
@@ -236,7 +267,7 @@ Sorts: most seen, last seen, kills, damage, healing, times they killed you, name
 | D-pad up / down | same | select (hold to repeat) |
 | D-pad left / right | same | change the filter |
 | LT / RT | L2 / R2 | page up / down |
-| A | Cross | open the match's full scoreboard (Matches tab, while stored) |
+| A | Cross | battle report of the match (Matches tab, while stored) |
 | X | Square | change the sort |
 | Y | Triangle | match card / lifetime stats (Matches tab) |
 | B | Circle | back (to the inventory or the scoreboard) |

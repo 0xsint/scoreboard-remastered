@@ -22,6 +22,9 @@ local DEFAULTS = {
     inventoryButton = true, -- "Battleground records" in the inventory
     inventoryKey = "right_stick", -- gamepad inventory button
     debug = false,
+    autoReport = true,     -- open the battle report when you leave a finished battleground
+    showLauncher = true,   -- PC: the draggable records button on the HUD
+    launcherPos = nil,
     showLoadTiming = false, -- always print the load report (it prints by itself when slow)
     history = {},
 }
@@ -49,6 +52,8 @@ local function RegisterEvents()
         SBR.LibFights:Init()
         M("activated: inventory, LibFights")
         SBR.MatchLog:OnPlayerActivated()
+        SBR.ReportUI:OnPlayerActivated()
+        SBR.Launcher:Install()
         M("activated: match log")
         SBR.FinishLoadProfile()
         -- the settings panel is built a moment after login, not during the load
@@ -78,6 +83,7 @@ local HELP = {
     "/sbr clear - delete saved history",
     "/sbr status - LibFights state and score types",
     "/sbr load - how long the last loads took (CPU budget)",
+    "/sbr report - battle report of the last match",
     "/sbr hooks - which native scoreboard parts were hooked",
     "/sbr debug - toggle debug output",
 }
@@ -126,6 +132,8 @@ local function Slash(args)
         W:Show(true)
     elseif cmd == "hide" then
         W:Hide(true)
+    elseif cmd == "report" then
+        SBR.ReportUI:Open()
     elseif cmd == "load" then
         local reports = SBR.sv.loadReports or {}
         if #reports == 0 then SBR.Print("no load report yet") end
