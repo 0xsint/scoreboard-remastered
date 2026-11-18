@@ -34,6 +34,12 @@ local function IsScoreboardName(name)
 end
 
 function Hook:OnVisibility(id, control, newState)
+    -- the in-game board's scenes are handled by UI/Replace.lua while it replaces them
+    local sceneName = id:match("^scene:(.+)$")
+    if sceneName and SBR.Replace and SBR.Replace:IsReplacedScene(sceneName) then
+        if SHOWN[newState] then SBR.MatchLog:RequestSnapshot() end
+        return
+    end
     if SHOWN[newState] then
         self.visible[id] = control or true
         if control then self.anchorControl = control end

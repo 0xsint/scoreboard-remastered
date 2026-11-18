@@ -15,6 +15,7 @@ local DEFAULTS = {
     chatSummary = true,
     maxHistory = 50,       -- 10 on console (smaller SavedVariables budget)
     gamepadOpenKey = "right_stick", -- button added to the native gamepad scoreboard
+    replaceNativeScoreboard = true, -- our table instead of the native in-game scoreboard (UI/Replace.lua)
     consoleLayout = "table", -- gamepad scoreboard: "table" (the PC table) or "list" (native list screen)
     maxRecords = 500,      -- match database records (150 on console)
     maxPlayers = 2000,     -- player index entries (400 on console)
@@ -36,6 +37,7 @@ end
 local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
         SBR.Hook:Install() -- catch anything created after addon load
+        SBR.Replace:Install()
         SBR.InventoryHook:Install()
         SBR.LibFights:Init()
         SBR.MatchLog:OnPlayerActivated()

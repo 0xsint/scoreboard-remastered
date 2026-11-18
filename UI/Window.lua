@@ -1340,13 +1340,39 @@ end
 -- covered: another screen was opened on top (kill feed, records); keep the
 -- selection and details for when B returns to the table
 function UI:OnGamepadHidden(covered)
-    if covered then return end
+    if covered or self.replacing then return end
     self:CloseDetails()
     self:ApplyStyle("keyboard")
 end
 
+-- In place of the native in-game scoreboard (UI/Replace.lua drives these).
+function UI:ShowReplacement()
+    self:Create()
+    self.replacing = true
+    local mode = SBR.IsGamepad() and "gamepad" or "keyboard"
+    if self.mode ~= mode then self:ApplyStyle(mode) end
+    self.control:SetHidden(false)
+    if self.dim then self.dim:SetHidden(true) end
+    if SBR.MatchLog:GetCurrent() then SBR.MatchLog:Snapshot() end
+    self:Refresh()
+end
+
+function UI:HideReplacement()
+    self.replacing = false
+    -- "Full screen" opened the table scene on top: it keeps the window
+    local GP = SBR.Gamepad
+    if GP.scene and GP.scene:IsShowing() then return end
+    self:CloseDetails()
+    self.control:SetHidden(true)
+    if self.mode ~= "keyboard" then self:ApplyStyle("keyboard") end
+end
+
 function UI:Hide(force)
     if not self.control then return end
+    if self.replacing then
+        SBR.Replace:Close()
+        return
+    end
     if self.mode == "gamepad" then
         SBR.Gamepad:Close()
         return

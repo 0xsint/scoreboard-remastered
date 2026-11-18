@@ -188,7 +188,15 @@ sceneStack = {}
 ZO_Scene = { New = function(_, name)
     local sc = { name = name, frags = {}, cbs = {} }
     function sc:AddFragment(f) table.insert(self.frags, f) end
+    function sc:RemoveFragment(f)
+        for i = #self.frags, 1, -1 do if self.frags[i] == f then table.remove(self.frags, i) end end
+    end
+    function sc:HasFragment(f)
+        for _, x in ipairs(self.frags) do if x == f then return true end end
+        return false
+    end
     function sc:AddFragmentGroup() end
+    function sc:RemoveFragmentGroup() end
     function sc:RegisterCallback(_, f) table.insert(self.cbs, f) end
     function sc:IsShowing() return self.showing == true end
     function sc:SetState(st)
@@ -203,7 +211,47 @@ ZO_Scene = { New = function(_, name)
     SCENES[name] = sc
     return sc
 end }
-FRAGMENT_GROUP = { GAMEPAD_DRIVEN_UI_WINDOW = {}, GAMEPAD_KEYBIND_STRIP_GROUP = {}, MOUSE_DRIVEN_UI_WINDOW = {} }
+FRAGMENT_GROUP = { GAMEPAD_DRIVEN_UI_WINDOW = {}, GAMEPAD_KEYBIND_STRIP_GROUP = {}, MOUSE_DRIVEN_UI_WINDOW = {},
+    BATTLEGROUND_MATCH_INFO_KEYBOARD_GROUP = {}, BATTLEGROUND_MATCH_INFO_GAMEPAD_GROUP = {} }
+
+-- ESO's in-game scoreboard scenes (battlegroundscoreboardingame.lua): the native board
+-- fragment, and the native buttons added at SHOWING / removed at HIDDEN.
+SI_BATTLEGROUND_SCOREBOARD_CLOSE, SI_BATTLEGROUND_SCOREBOARD_LEAVE_BATTLEGROUND = 9001, 9002
+ZO_BATTLEGROUND_SCOREBOARD_IN_GAME = {
+    keybindStripDescriptor = { alignment = 1,
+        { name = "Close", keybind = "HIDE_BATTLEGROUND_SCOREBOARD", callback = function() end },
+        { name = "Leave Battleground", keybind = "LEAVE_BATTLEGROUND", callback = function() end } },
+    listNavigationKeybindStripDescriptor = { alignment = 1,
+        { name = "Player Options", keybind = "BATTLEGROUND_SCOREBOARD_PLAYER_OPTIONS", callback = function() end },
+        { name = "Previous", keybind = "BATTLEGROUND_SCOREBOARD_PREVIOUS", callback = function() end },
+        { name = "Next", keybind = "BATTLEGROUND_SCOREBOARD_NEXT", callback = function() end } },
+}
+for _, n in ipairs({ "battleground_scoreboard_in_game", "battleground_scoreboard_in_game_ui" }) do
+    local sc = ZO_Scene:New(n)
+    sc:AddFragment(BATTLEGROUND_SCOREBOARD_FRAGMENT)
+    sc:RegisterCallback("StateChange", function(_, st)
+        local native = ZO_BATTLEGROUND_SCOREBOARD_IN_GAME
+        if st == "showing" then
+            KEYBIND_STRIP:AddKeybindButtonGroup(native.keybindStripDescriptor)
+            KEYBIND_STRIP:AddKeybindButtonGroup(native.listNavigationKeybindStripDescriptor)
+            if sc:HasFragment(BATTLEGROUND_SCOREBOARD_FRAGMENT) and BATTLEGROUND_SCOREBOARD_FRAGMENT.cb then
+                BATTLEGROUND_SCOREBOARD_FRAGMENT.cb(nil, "shown")
+            end
+        elseif st == "hidden" then
+            KEYBIND_STRIP:RemoveKeybindButtonGroup(native.listNavigationKeybindStripDescriptor)
+            KEYBIND_STRIP:RemoveKeybindButtonGroup(native.keybindStripDescriptor)
+            if sc:HasFragment(BATTLEGROUND_SCOREBOARD_FRAGMENT) and BATTLEGROUND_SCOREBOARD_FRAGMENT.cb then
+                BATTLEGROUND_SCOREBOARD_FRAGMENT.cb(nil, "hidden")
+            end
+        end
+    end)
+end
+-- the scoreboard key: SetHUDScene("battleground_scoreboard_in_game"); closing: RestoreHUDScene
+function SCENE_MANAGER:RestoreHUDScene()
+    local top = sceneStack[#sceneStack]
+    if top and top.name:find("^battleground_scoreboard_in_game") then self:HideCurrentScene() end
+end
+function SCENE_MANAGER:RestoreHUDUIScene() end
 
 -- ESO gamepad framework stand-in (records what the add-on puts into it).
 -- Mirrors the API of ZO_Gamepad_ParametricList_Screen, ZO_GamepadEntryData, the
@@ -575,6 +623,8 @@ function GetBattlegroundTeamName(t) return ({ "Fire Drakes", "Pit Daemons" })[t]
 function GetCurrentBattlegroundGameType(roundIndex) return CUR.gameTypeId end
 function GetString(prefix, id)
     if prefix == 676 then return "User Interface Shortcuts" end
+    if prefix == 9001 then return "Close" end
+    if prefix == 9002 then return "Leave Battleground" end
     if prefix == "SI_BATTLEGROUNDGAMETYPE" then return CUR.gameType end
     return ""
 end
@@ -1084,20 +1134,51 @@ if SCREENS_OUT then
     IsInGamepadPreferredMode = function() return false end
     MB.tab, MB.filter, MB.sort, MB.selected, MB.offset, MB.card = "matches", 1, 1, 1, 0, "match"
     W.viewIndex = nil
-    nativeFragment.cb(nil, "shown")
+    local function check(ok, what) if not ok then error("check failed: " .. what) end end
+    -- the scoreboard key opens Scoreboard Remastered instead of the native board
+    SCENE_MANAGER:Push("battleground_scoreboard_in_game_ui")
+    check(not SCENES.battleground_scoreboard_in_game_ui:HasFragment(BATTLEGROUND_SCOREBOARD_FRAGMENT), "native board removed")
+    check(SBR.Replace:IsShowing() and not W.control:IsHidden(), "replacement shown")
+    check(not KEYBIND_STRIP.groups[ZO_BATTLEGROUND_SCOREBOARD_IN_GAME.listNavigationKeybindStripDescriptor], "native buttons replaced")
     W:Select(find(function(p) return p.isLocal end))
     W:OpenDetails()
-    screen("pc-scoreboard", "PC: the panel over the battleground scoreboard, your row's details open",
-        "keyboard", { "ScoreboardRemasteredDim", "ScoreboardRemasteredWindow" }, { "world", "nativeScoreboard" })
+    screen("pc-scoreboard", "PC: Scoreboard Remastered in place of the battleground scoreboard, your row's details open",
+        "keyboard", { "ScoreboardRemasteredWindow" }, { "world" })
     W:CloseDetails()
-    nativeFragment.cb(nil, "hidden")
+    SBR.Replace:Close()
+    check(W.control:IsHidden() and not SBR.Replace:IsShowing(), "closing hides it")
 
-    -- 2. Gamepad: the native scoreboard's button bar gets "Open Remastered"
+    -- 2. Gamepad: the scoreboard key opens the table (HUD scene: you can still fight)
     IsInGamepadPreferredMode = function() return true end
-    nativeFragment.cb(nil, "shown")
-    screen("gamepad-native", "Gamepad: Open Remastered on the battleground scoreboard's button bar",
-        "gamepad", {}, { "world", "nativeScoreboard" })
-    nativeFragment.cb(nil, "hidden")
+    SCENE_MANAGER:Push("battleground_scoreboard_in_game")
+    check(W.mode == "gamepad", "gamepad style")
+    local function key(keybind, up)
+        for gi = #KEYBIND_STRIP.order, 1, -1 do
+            for _, b in ipairs(KEYBIND_STRIP.order[gi]) do
+                if b.keybind == keybind and (b.enabled == nil or b.enabled == true or (type(b.enabled) == "function" and b.enabled())) then
+                    if not up or b.handlesKeyUp then b.callback(up) end
+                    return true
+                end
+            end
+        end
+    end
+    local _, i0 = W:GetSelectedPlayer()
+    check(key("BATTLEGROUND_SCOREBOARD_NEXT"), "next player key is ours"); key("BATTLEGROUND_SCOREBOARD_NEXT", true)
+    local _, i1 = W:GetSelectedPlayer()
+    check(i1 == i0 + 1, "next player key moves the selection")
+    key("BATTLEGROUND_SCOREBOARD_PLAYER_OPTIONS")
+    check(W.detailsOpen, "player options key opens details")
+    screen("gamepad-native", "Gamepad: Scoreboard Remastered in place of the battleground scoreboard, details open",
+        "gamepad", { "ScoreboardRemasteredWindow" }, { "world" })
+    -- R3: full screen (table scene), B: back to the board
+    key("SBR_SCOREBOARD_OPEN_RIGHT_STICK")
+    check(SBR.Gamepad.scene:IsShowing() and not W.control:IsHidden(), "full screen keeps the table")
+    SCENE_MANAGER:HideCurrentScene()
+    check(SBR.Replace:IsShowing() and not W.control:IsHidden() and W.mode == "gamepad", "back to the replaced board")
+    W:CloseDetails()
+    SBR.Replace:Close()
+    check(W.control:IsHidden(), "closed")
+    io.stderr:write("replacement checks passed\n")
 
     -- 3. Console: Scoreboard Remastered as the PC-style table, a player's details open
     GP:Open()

@@ -14,10 +14,10 @@ database opens from the inventory, anywhere in the game.
 > real font sizes and colours. See [How the screenshots are made](#how-the-screenshots-are-made)
 > for what is exact and what is approximated.
 
-**PC: the panel over the battleground scoreboard, with the selected player's details**
+**PC: Scoreboard Remastered in place of the battleground scoreboard, with the selected player's details**
 ![PC scoreboard](docs/screenshots/pc-scoreboard.jpg)
 
-**Gamepad / console: "Open Remastered" on the battleground scoreboard's button bar**
+**Gamepad / console: the scoreboard key opens Scoreboard Remastered (details open)**
 ![Open Remastered on the native scoreboard](docs/screenshots/gamepad-native.jpg)
 
 **Console: Scoreboard Remastered, the PC table driven by the controller (details open with A / Cross)**
@@ -111,9 +111,9 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
 
 ### PC with mouse and keyboard
 
-- The panel opens and closes with the native battleground scoreboard. By default it sits
-  **over** the board on a dimmed backdrop, because ESO's board is about 1300 px wide and
-  there's no room beside it. `/sbr attach right|left|below` places it next to the board
+- The scoreboard key opens the panel in place of ESO's board (see above). On the
+  end-of-match board, or with the replacement turned off, it opens **over** ESO's board
+  on a dimmed backdrop. `/sbr attach right|left|below` places it next to the board
   instead (kept on screen). Drag it to give it a fixed position (`/sbr reset` undoes this).
 - **Click a row** to open its details beside the panel: medals, every fight stat, top
   abilities and the you-vs-them breakdown. Click the row again, or the X, to close.
@@ -128,13 +128,37 @@ Matches are saved in `SavedVariables/ScoreboardRemastered.lua`
   the kill log, both in a pre-selected box ready for Ctrl+C.
 - Keybinds: *Controls → Scoreboard Remastered*.
 
+### It replaces the native scoreboard
+
+The scoreboard key now opens Scoreboard Remastered instead of ESO's in-game battleground
+scoreboard, on PC and console. It's the same toggle as before: you can still move and
+fight while it's up, and the same key closes it. Buttons on the bar while it's up:
+
+| Button | Action |
+|---|---|
+| Scoreboard key | close |
+| Leave key | leave the battleground (ESO's own confirmation) |
+| Previous / next player keys (D-pad up / down) | move the selection (hold to repeat) |
+| D-pad left / right | sort by the previous / next column (gamepad) |
+| Player options key | show / hide the selected player's details (gamepad) |
+| R3 | full screen: everything below, including kill feed, history and records (gamepad) |
+
+Only keys the native board already uses are taken, plus D-pad left / right and R3, so
+attacks, block and abilities keep working with the board up. On PC, in UI mode (cursor),
+the mouse works as below. The **end-of-match** scoreboard stays ESO's, because it has the
+round summary and the queue options. There the panel opens over it (PC), or **Open
+Remastered** (R3) is on its button bar (gamepad). Turn **Settings → Replace the native
+scoreboard** off to get ESO's board back.
+
+How it's done: ESO's two in-game scoreboard scenes stay ESO's. The add-on only takes
+the native board fragment and its match-info panel out of them, shows the table in
+their place, and swaps the native buttons for its own. Nothing of ESO's is wrapped and
+no key layer is pushed (see [The "insecure code" error](#the-insecure-code-error)).
+
 ### Console, or gamepad mode on PC
 
-While the native battleground scoreboard is open, its button bar gets
-**Open Remastered** (right stick click by default; you can change it in settings).
-
-**Scoreboard Remastered** is the same table as on PC, sized for the TV and driven by the
-controller. Your row starts selected. A / Cross opens that player's details beside the
+**Full screen** (R3 on the board, or from the settings) is the same table as on PC, sized
+for the TV and driven by the controller. Your row starts selected. A / Cross opens that player's details beside the
 table, and they follow the selection as you move.
 
 | Xbox | PlayStation | Action |

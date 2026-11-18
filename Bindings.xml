@@ -25,6 +25,15 @@
                 <Down>return ZO_KeybindStrip_HandleKeybindDown(keybind)</Down>
                 <Up>return ZO_KeybindStrip_HandleKeybindUp(keybind)</Up>
             </Action>
+            <!-- D-pad left / right on the replacement scoreboard (UI/Replace.lua) -->
+            <Action name="SBR_SCOREBOARD_SORT_PREVIOUS" inheritsBindFrom="UI_SHORTCUT_INPUT_LEFT" hideAction="true">
+                <Down>return ZO_KeybindStrip_HandleKeybindDown(keybind)</Down>
+                <Up>return ZO_KeybindStrip_HandleKeybindUp(keybind)</Up>
+            </Action>
+            <Action name="SBR_SCOREBOARD_SORT_NEXT" inheritsBindFrom="UI_SHORTCUT_INPUT_RIGHT" hideAction="true">
+                <Down>return ZO_KeybindStrip_HandleKeybindDown(keybind)</Down>
+                <Up>return ZO_KeybindStrip_HandleKeybindUp(keybind)</Up>
+            </Action>
             <Action name="SBR_SCOREBOARD_OPEN_QUATERNARY" inheritsBindFrom="UI_SHORTCUT_QUATERNARY" hideAction="true">
                 <Down>return ZO_KeybindStrip_HandleKeybindDown(keybind)</Down>
                 <Up>return ZO_KeybindStrip_HandleKeybindUp(keybind)</Up>

@@ -208,6 +208,7 @@ function ML:IsAnythingShowing()
     if W and W.control and not W.control:IsHidden() then return true end
     if GP and GP:IsShowing() then return true end
     if Hook and Hook.IsNativeVisible and Hook:IsNativeVisible() then return true end
+    if SBR.Replace and SBR.Replace:IsShowing() then return true end
     return false
 end
 

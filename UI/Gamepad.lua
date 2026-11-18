@@ -50,6 +50,15 @@ local function StopRepeat()
     EVENT_MANAGER:UnregisterForUpdate(SBR.name .. "_DPadRepeat")
 end
 
+-- After a press: wait, then call fn repeatedly until StopRepeat (key up).
+local function StartRepeat(fn)
+    local ns = SBR.name .. "_DPadRepeat"
+    EVENT_MANAGER:RegisterForUpdate(ns, REPEAT_DELAY_MS, function()
+        EVENT_MANAGER:UnregisterForUpdate(ns)
+        EVENT_MANAGER:RegisterForUpdate(ns, REPEAT_RATE_MS, fn)
+    end)
+end
+
 function GP.AddDPadKeybinds(group, handlers)
     for dir, keybind in pairs(DPAD) do
         local fn = handlers[dir]
@@ -62,11 +71,7 @@ function GP.AddDPadKeybinds(group, handlers)
                     StopRepeat()
                     if up then return end
                     fn()
-                    local ns = SBR.name .. "_DPadRepeat"
-                    EVENT_MANAGER:RegisterForUpdate(ns, REPEAT_DELAY_MS, function()
-                        EVENT_MANAGER:UnregisterForUpdate(ns)
-                        EVENT_MANAGER:RegisterForUpdate(ns, REPEAT_RATE_MS, fn)
-                    end)
+                    StartRepeat(fn)
                 end,
             }
         end
@@ -74,6 +79,7 @@ function GP.AddDPadKeybinds(group, handlers)
     return group
 end
 GP.StopDPadRepeat = StopRepeat
+GP.StartDPadRepeat = StartRepeat
 
 local function ListScreen() return SBR.Console and SBR.Console.scoreboard end
 
@@ -241,6 +247,10 @@ function GP:BuildKeybinds()
 end
 
 function GP:UpdateKeybinds()
+    if SBR.Replace and SBR.Replace:IsShowing() and not (self.scene and self.scene:IsShowing()) then
+        SBR.Replace:UpdateKeybinds()
+        return
+    end
     if self.keybinds and self.scene and self.scene:IsShowing() then
         KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybinds)
         return
