@@ -38,6 +38,9 @@ end
 local function RegisterEvents()
     On("EVENT_PLAYER_ACTIVATED", function()
         local M = SBR.Mark
+        -- the time from our setup to here is the game loading the world and the
+        -- other add-ons, not ours: it gets its own line in the report
+        M("waiting: game and other add-ons")
         SBR.Hook:Install() -- catch anything created after addon load
         SBR.Replace:Install()
         M("activated: scoreboard hooks")
@@ -127,9 +130,9 @@ local function Slash(args)
         local reports = SBR.sv.loadReports or {}
         if #reports == 0 then SBR.Print("no load report yet") end
         for _, r in ipairs(reports) do
-            SBR.Print("%s: our files %d ms, setup %d ms, after login %d ms; slowest step %s %d ms; slowest add-ons: %s",
+            SBR.Print("%s: our files %d ms, setup %d ms, after login %d ms; slowest step %s %d ms; not ours %d ms; slowest add-ons: %s",
                 SBR.FormatTimestamp and SBR.FormatTimestamp(r.at) or tostring(r.at), r.ourFilesMs or 0, r.setupMs or 0,
-                r.activatedMs or 0, tostring(r.slowest), r.slowestMs or 0, r.otherAddons ~= "" and r.otherAddons or "-")
+                r.activatedMs or 0, tostring(r.slowest), r.slowestMs or 0, r.outsideMs or 0, r.otherAddons ~= "" and r.otherAddons or "-")
         end
         local last = reports[#reports]
         if last then SBR.Print("steps (ms): %s", last.steps) end
@@ -221,15 +224,19 @@ function SBR.FinishLoadProfile()
     p.done = true
     EVENT_MANAGER:UnregisterForEvent(SBR.name .. "_LoadTimeline", EVENT_ADD_ON_LOADED)
     local lines, last = {}, p.start
-    local ours, setup, activated = 0, 0, 0
+    local ours, setup, activated, waiting = 0, 0, 0, 0
     local slowest, slowestMs = nil, -1
     for _, m in ipairs(p.marks) do
         local ms = m[2] - last
         last = m[2]
-        if m[1]:find("^setup") then setup = setup + ms
+        -- "add-on loaded event" / "waiting: ..." are time spent outside our code
+        local outside = m[1] == "add-on loaded event" or m[1]:find("^waiting") ~= nil
+        if outside then
+            waiting = waiting + ms
+        elseif m[1]:find("^setup") then setup = setup + ms
         elseif m[1]:find("^activated") then activated = activated + ms
-        elseif m[1] ~= "add-on loaded event" then ours = ours + ms end
-        if m[1] ~= "add-on loaded event" and ms > slowestMs then slowest, slowestMs = m[1], ms end
+        else ours = ours + ms end
+        if not outside and ms > slowestMs then slowest, slowestMs = m[1], ms end
         lines[#lines + 1] = string.format("%s %d", m[1], ms)
     end
     -- other add-ons: time between consecutive "add-on loaded" events (their saved
@@ -244,7 +251,7 @@ function SBR.FinishLoadProfile()
     for i = 1, math.min(3, #others) do top[#top + 1] = string.format("%s %d ms", others[i][1], others[i][2]) end
     local report = {
         at = GetTimeStamp(),
-        ourFilesMs = ours, setupMs = setup, activatedMs = activated,
+        ourFilesMs = ours, setupMs = setup, activatedMs = activated, outsideMs = waiting,
         slowest = slowest, slowestMs = slowestMs,
         sinceFirstFileMs = last - p.start,
         steps = table.concat(lines, ", "),
@@ -258,8 +265,8 @@ function SBR.FinishLoadProfile()
     end
     local total = ours + setup + activated
     if total >= SLOW_LOAD_MS or (sv and sv.showLoadTiming) then
-        SBR.Print("load: our files %d ms, setup %d ms, after login %d ms (slowest: %s %d ms). Slowest loads overall: %s",
-            ours, setup, activated, tostring(slowest), slowestMs, #top > 0 and table.concat(top, ", ") or "-")
+        SBR.Print("load: our files %d ms, setup %d ms, after login %d ms (slowest: %s %d ms). Not ours: game and other add-ons %d ms. Slowest loads overall: %s",
+            ours, setup, activated, tostring(slowest), slowestMs, waiting, #top > 0 and table.concat(top, ", ") or "-")
     end
 end
 

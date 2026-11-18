@@ -420,6 +420,8 @@ Scoreboard Remastered: load: our files 40 ms, setup 12 ms, after login 9 ms
 (slowest: UI/Window.lua 11 ms). Slowest loads overall: LibFights 310 ms, ...
 ```
 
+"Not ours" is the time between our steps that the game and the other add-ons spend:
+loading their files, the world and the loading screen. It isn't counted as ours.
 "Slowest loads overall" is the time between one add-on's loaded event and the next.
 That's mostly that add-on's saved variables and setup, so it shows when another add-on
 is the one using the budget. The last 5 reports are kept in `sv.loadReports`. **Show

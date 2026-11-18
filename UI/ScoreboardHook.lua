@@ -99,6 +99,9 @@ function Hook:HookScene(name, scene)
 end
 
 function Hook:Install()
+    -- every loading screen calls this; after the first complete pass there is
+    -- nothing new to find
+    if self.installed then return end
     for _, n in ipairs(FRAGMENT_NAMES) do self:HookFragment(n, _G[n]) end
 
     -- Known names only (from the ESO UI source, API 101051). Scanning _G for others
@@ -107,6 +110,7 @@ function Hook:Install()
         for name, scene in pairs(SCENE_MANAGER.scenes) do
             if type(name) == "string" and IsScoreboardName(name) then self:HookScene(name, scene) end
         end
+        self.installed = next(self.fragments) ~= nil or next(self.scenes) ~= nil
     end
 end
 
