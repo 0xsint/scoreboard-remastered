@@ -282,14 +282,29 @@ local function NewTooltip()
     function tip:GetStyle(n) return n end
     function tip:AcquireSection(style)
         local sec = { style = style, items = {} }
-        function sec:AddLine(text, st) table.insert(self.items, { kind = "line", text = text, style = st }) end
-        function sec:AcquireStatValuePair(st)
-            local pair = { kind = "pair", style = st }
-            function pair:SetStat(t, st2) self.stat, self.statStyle = t, st2 end
-            function pair:SetValue(v, st2) self.value, self.valueStyle = v, st2 end
+        -- styles are recorded as lists so the renderer can apply ESO's sizing rules
+        -- (fullWidth / widthPercent, horizontalAlignment) exactly as ZO_Tooltip does
+        local function styles(...)
+            local out = {}
+            for i = 1, select("#", ...) do
+                local st = select(i, ...)
+                if type(st) == "table" then
+                    out[#out + 1] = st.horizontalAlignment == TEXT_ALIGN_RIGHT and "alignRight" or "custom"
+                elseif st ~= nil then out[#out + 1] = st end
+            end
+            return out
+        end
+        function sec:AddLine(text, ...) table.insert(self.items, { kind = "line", text = text, style = (...), styles = styles(...) }) end
+        function sec:AcquireStatValuePair(...)
+            local pair = { kind = "pair", styles = styles(...) }
+            function pair:SetStat(t, ...) self.stat, self.statStyles = t, styles(...) end
+            function pair:SetValue(v, ...) self.value, self.valueStyle, self.valueStyles = v, (...), styles(...) end
             return pair
         end
-        function sec:AddStatValuePair(pair) table.insert(self.items, { kind = "pair", stat = pair.stat, value = pair.value, valueStyle = pair.valueStyle }) end
+        function sec:AddStatValuePair(pair)
+            table.insert(self.items, { kind = "pair", stat = pair.stat, value = pair.value, valueStyle = pair.valueStyle,
+                styles = pair.styles, valueStyles = pair.valueStyles })
+        end
         return sec
     end
     function tip:AddSection(sec) table.insert(self.sections, sec) end

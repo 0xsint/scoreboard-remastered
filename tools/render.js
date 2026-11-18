@@ -313,30 +313,37 @@ function pageMain(screen, native, FONTS, FACES) {
       add(`<div style="position:absolute;left:197px;top:${yy}px;width:${sel ? 360 : 320}px;height:${hh}px;display:flex;align-items:center;font:500 ${size}px ${FC};color:${sel ? "#fff" : "rgba(197,194,158,.62)"};text-transform:uppercase;${shadow}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${markup(r.e.text)}</span></div>`);
       yy += hh;
     }
-    // GAMEPAD_RIGHT_TOOLTIP in quadrant 4
-    let ty = 70;
-    const tx = 1434, tw = 390;
+    // GAMEPAD_RIGHT_TOOLTIP in quadrant 4, sized the way ZO_Tooltip sizes things:
+    //   * a line or stat / value pair WITH fullWidth (widthPercent 100) gets the tooltip's
+    //     width; lines wrap, and a pair's value gets width - stat - 5 and wraps
+    //   * WITHOUT a width, it is as wide as its text and never wraps or truncates, so it
+    //     can run past the tooltip (and the screen) edge, exactly like in game
+    //   * a value is anchored 5 px after its stat (ZO_TooltipStatValuePair:SetValue);
+    //     it is only right-aligned when its style says horizontalAlignment = RIGHT
+    const tx = 1434, tw = 390, ttop = 70, tbottom = 1080 - 140;
+    const has = (list, name) => (list || []).includes(name);
+    let tip = `<div data-sbr-tip style="position:absolute;left:${tx}px;top:${ttop}px;width:${tw}px;height:${tbottom - ttop}px;clip-path:inset(0 -2000px 0 -2000px);${shadow}">`;
     for (const sec of c.tooltip) {
+      tip += `<div style="margin-bottom:${sec.style === "bodyHeader" ? 18 : 30}px">`;
       for (const it of sec.items) {
-        if (ty > 1080 - 140) break;
+        const full = has(it.styles, "fullWidth");
         if (it.kind === "pair") {
           const vs = it.valueStyle === "statValuePairValueSmall" ? 34 : 42;
-          add(`<div style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;height:${vs + 4}px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;${shadow}">
-            <span style="font:500 27px ${FC};color:#d7d2c3;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${markup(it.stat)}</span>
-            <span style="font:500 ${vs}px ${FC};color:#fff;white-space:nowrap">${markup(it.value)}</span></div>`);
-          ty += vs + 6;
+          const right = has(it.valueStyles, "alignRight");
+          tip += `<div data-sbr-item style="display:flex;align-items:baseline;min-height:40px;${full ? "width:100%" : "width:max-content;white-space:nowrap"}">
+            <span style="font:500 27px ${FC};color:#d7d2c3;text-transform:uppercase;white-space:nowrap;flex:none">${markup(it.stat)}</span>
+            <span style="margin-left:5px;font:500 ${vs}px ${FC};color:#fff;line-height:1.15;${full ? `flex:1;min-width:0;text-align:${right ? "right" : "left"};overflow-wrap:anywhere` : "white-space:nowrap"}">${markup(it.value)}</span></div>`;
         } else {
           const st = it.style;
-          const css = st === "title" ? `font:500 42px ${FC};color:#fff;text-transform:uppercase`
-            : st === "bodyHeader" ? `font:500 27px ${FC};color:#fff;text-transform:uppercase`
-            : `font:300 ${sec.style === "bodyHeader" ? 27 : 34}px ${FC};color:#d7d2c3`;
-          const est = st === "title" ? 50 : st === "bodyHeader" ? 34 : (sec.style === "bodyHeader" ? 34 : 42);
-          add(`<div style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;${css};line-height:1.2;${shadow}">${markup(it.text)}</div>`);
-          ty += est;
+          const css = st === "title" ? `font:500 42px ${FC};color:#fff;text-transform:uppercase;margin-bottom:8px`
+            : st === "bodyHeader" ? `font:500 27px ${FC};color:#fff;text-transform:uppercase;margin-bottom:4px`
+            : `font:300 42px ${FC};color:#d7d2c3`;
+          tip += `<div data-sbr-item style="${css};line-height:1.15;${full ? "width:100%" : "width:max-content;white-space:nowrap"}">${markup(it.text)}</div>`;
         }
       }
-      ty += sec.style === "bodyHeader" ? 18 : 30;
+      tip += `</div>`;
     }
+    add(tip + `</div>`);
   }
 
   // add-on controls (top levels in creation order)
@@ -382,6 +389,11 @@ function pageMain(screen, native, FONTS, FACES) {
     await page.evaluate(([s, n, F, FA, src]) => { eval(src); pageMain(s, n, F, FA); },
       [screen, data.native, FONTS, FACES, "var pageMain = " + pageMain.toString()]);
     const file = path.join(outDir, screen.id + ".jpg");
+    // anything in the tooltip that ends past the tooltip's right edge is a layout bug
+    const over = await page.evaluate(() => [...document.querySelectorAll("[data-sbr-tip] [data-sbr-item], [data-sbr-tip] [data-sbr-item] > span")]
+      .map(e => [e.getBoundingClientRect(), e.textContent.trim().replace(/\s+/g, " ")])
+      .filter(([r]) => r.right > 1434 + 390 + 1).map(([r, t]) => `${Math.round(r.right)}px: ${t}`));
+    for (const o of over) console.warn(`OVERFLOW ${screen.id}: ${o}`);
     await page.screenshot({ path: file, type: "jpeg", quality: 90 });
     console.log("wrote", file);
   }

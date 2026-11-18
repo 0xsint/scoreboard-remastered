@@ -33,22 +33,40 @@ local function Color(hex, text) return string.format("|c%s%s|r", hex, text) end
 ---------------------------------------------------------------------------
 -- Tooltip layouts (ZO_Tooltip methods, dispatched by GAMEPAD_TOOLTIPS:Layout...)
 ---------------------------------------------------------------------------
+-- Everything in a tooltip is laid out full width. Without a width, ESO sizes a line or
+-- stat / value pair to its text and never wraps it, so long rows ran past the
+-- tooltip's right edge, which is the right edge of the screen.
+local RIGHT_ALIGNED = { horizontalAlignment = TEXT_ALIGN_RIGHT }
+local STAT_MAX_CHARS = 20
+
+-- Shortens plain text (no colour or icon markup) so a stat label leaves room for its value.
+local function Fit(text, maxChars)
+    text = tostring(text or "")
+    maxChars = maxChars or STAT_MAX_CHARS
+    if text:find("|", 1, true) or #text <= maxChars then return text end
+    local cut = maxChars - 1
+    while cut > 1 and text:byte(cut + 1) and text:byte(cut + 1) >= 128 and text:byte(cut + 1) < 192 do cut = cut - 1 end
+    return text:sub(1, cut) .. "\226\128\166" -- "..." (never splits a UTF-8 character)
+end
+
 local function Title(tooltip, title, subtitle)
-    local s = tooltip:AcquireSection(tooltip:GetStyle("bodyHeader"))
-    s:AddLine(title, tooltip:GetStyle("title"))
-    if subtitle and subtitle ~= "" then s:AddLine(subtitle, tooltip:GetStyle("bodyDescription")) end
+    local full = tooltip:GetStyle("fullWidth")
+    local s = tooltip:AcquireSection(tooltip:GetStyle("bodySection"))
+    s:AddLine(title, tooltip:GetStyle("title"), full)
+    if subtitle and subtitle ~= "" then s:AddLine(subtitle, tooltip:GetStyle("bodyDescription"), full) end
     tooltip:AddSection(s)
 end
 
 local function Pairs(tooltip, header, rows, small)
     local s = tooltip:AcquireSection(tooltip:GetStyle("bodySection"))
-    if header then s:AddLine(header, tooltip:GetStyle("bodyHeader")) end
+    local full = tooltip:GetStyle("fullWidth")
+    if header then s:AddLine(header, tooltip:GetStyle("bodyHeader"), full) end
     local any = false
     for _, row in ipairs(rows) do
         if row[2] ~= nil then
-            local pair = s:AcquireStatValuePair(tooltip:GetStyle("statValuePair"))
-            pair:SetStat(row[1], tooltip:GetStyle("statValuePairStat"))
-            pair:SetValue(tostring(row[2]), tooltip:GetStyle(small and "statValuePairValueSmall" or "statValuePairValue"))
+            local pair = s:AcquireStatValuePair(tooltip:GetStyle("statValuePair"), full)
+            pair:SetStat(Fit(row[1]), tooltip:GetStyle("statValuePairStat"))
+            pair:SetValue(tostring(row[2]), tooltip:GetStyle(small and "statValuePairValueSmall" or "statValuePairValue"), RIGHT_ALIGNED)
             s:AddStatValuePair(pair)
             any = true
         end
@@ -59,8 +77,9 @@ end
 local function Lines(tooltip, header, lines)
     if not lines or #lines == 0 then return end
     local s = tooltip:AcquireSection(tooltip:GetStyle("bodySection"))
-    if header then s:AddLine(header, tooltip:GetStyle("bodyHeader")) end
-    for _, line in ipairs(lines) do s:AddLine(line, tooltip:GetStyle("bodyDescription")) end
+    local full = tooltip:GetStyle("fullWidth")
+    if header then s:AddLine(header, tooltip:GetStyle("bodyHeader"), full) end
+    for _, line in ipairs(lines) do s:AddLine(line, tooltip:GetStyle("bodyDescription"), full) end
     tooltip:AddSection(s)
 end
 
@@ -70,14 +89,14 @@ local function AbilityRows(list, limit)
     local out = {}
     for i, a in ipairs(list or {}) do
         if i > (limit or 5) then break end
-        out[#out + 1] = { Icon(a.icon, 32) .. " " .. (a.name or "?"), N(a.damage) }
+        out[#out + 1] = { Icon(a.icon, 32) .. " " .. Fit(a.name or "?", 18), N(a.damage) }
     end
     return out
 end
 
 local function MedalRows(list)
     local out = {}
-    for _, m in ipairs(list or {}) do out[#out + 1] = { Icon(m.icon, 32) .. " " .. (m.name or "?"), "x" .. (m.count or 1) } end
+    for _, m in ipairs(list or {}) do out[#out + 1] = { Icon(m.icon, 32) .. " " .. Fit(m.name or "?", 18), "x" .. (m.count or 1) } end
     return out
 end
 
@@ -89,7 +108,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredPlayer(p, match)
     Title(self, (p.characterName or "?") .. (p.isLocal and "  (you)" or ""), sub)
     local s = p.scores or {}
     Pairs(self, nil, {
-        { "Score", s.SCORE }, { "Kills / Deaths / Assists", string.format("%s / %s / %s", tostring(s.KILL or "-"), tostring(s.DEATH or "-"), tostring(s.ASSISTS or "-")) },
+        { "Score", s.SCORE }, { "K / D / A", string.format("%s / %s / %s", tostring(s.KILL or "-"), tostring(s.DEATH or "-"), tostring(s.ASSISTS or "-")) },
         { "Damage", N(s.DAMAGE_DONE) }, { "Healing", N(s.HEALING_DONE) },
     })
     local f = p.fight
@@ -103,7 +122,8 @@ function ZO_Tooltip:LayoutScoreboardRemasteredPlayer(p, match)
             { "Crowd control", (f.ccApplied or f.ccTaken) and string.format("%d dealt / %d taken", Num(f.ccApplied), Num(f.ccTaken)) or nil },
             { "Shields absorbed", Num(f.damageShielded) > 0 and N(f.damageShielded) or nil },
             { "Crit rate", f.critRate and Pct(f.critRate) },
-            { "Max hit", f.maxHit and (N(f.maxHit) .. (f.maxHitAbility and ("  " .. f.maxHitAbility) or "")) or nil },
+            { "Max hit", f.maxHit and N(f.maxHit) or nil },
+            { "Max hit ability", f.maxHitAbility },
             { "Combat time", f.activeTime and SBR.FormatDuration(f.activeTime) or nil },
         }, true)
         Pairs(self, "Top abilities", AbilityRows(f.topAbilities, 5), true)
@@ -115,8 +135,10 @@ function ZO_Tooltip:LayoutScoreboardRemasteredPlayer(p, match)
     local v = p.vs
     if v and not p.isLocal then
         Pairs(self, "You vs them", {
-            { "Damage you dealt / took", (Num(v.damageFromYou) + Num(v.damageToYou)) > 0 and (N(v.damageFromYou) .. " / " .. N(v.damageToYou)) or nil },
-            { "You killed them / they killed you", (Num(v.killedByYou) + Num(v.killedYou)) > 0 and (Num(v.killedByYou) .. " / " .. Num(v.killedYou)) or nil },
+            { "Damage to them", Num(v.damageFromYou) > 0 and N(v.damageFromYou) or nil },
+            { "Damage to you", Num(v.damageToYou) > 0 and N(v.damageToYou) or nil },
+            { "You killed them", Num(v.killedByYou) > 0 and Num(v.killedByYou) or nil },
+            { "They killed you", Num(v.killedYou) > 0 and Num(v.killedYou) or nil },
             { "You healed them", Num(v.healedByYou) > 0 and N(v.healedByYou) or nil },
             { "They healed you", Num(v.healedYou) > 0 and N(v.healedYou) or nil },
         }, true)
@@ -137,7 +159,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredKill(k, match)
     }, true)
     local recap = {}
     for _, h in ipairs(k.recap or {}) do
-        recap[#recap + 1] = { (h.ability ~= "" and h.ability or "?") .. "  ·  " .. (h.source ~= "" and h.source or "?"),
+        recap[#recap + 1] = { Fit((h.ability ~= "" and h.ability or "?") .. " · " .. (h.source ~= "" and h.source or "?")),
             N(h.hit) .. (h.crit and "*" or "") }
     end
     Pairs(self, "Last hits (oldest first)", recap, true)
@@ -161,7 +183,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredMatchPart(part, match)
         Title(self, "Your fights", "LibFights")
         local rows = {}
         for i, fl in ipairs(match.lf and match.lf.fightList or {}) do
-            rows[#rows + 1] = { string.format("%d. %s  ·  %s", i, fl.title or "?", SBR.FormatDuration(fl.durationSec)), N(fl.dps) .. " DPS" }
+            rows[#rows + 1] = { Fit(string.format("%d. %s", i, fl.title or "?"), 16) .. " · " .. SBR.FormatDuration(fl.durationSec), N(fl.dps) .. " DPS" }
         end
         if #rows > 0 then Pairs(self, nil, rows, true) else Lines(self, nil, { "No fights recorded yet." }) end
     elseif part == "deaths" then
@@ -169,7 +191,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredMatchPart(part, match)
         for _, d in ipairs(match.lf and match.lf.deaths or {}) do
             local hits = {}
             for _, h in ipairs(d.hits or {}) do
-                hits[#hits + 1] = { (h.ability or "?") .. "  ·  " .. (h.source or "?"), N(h.hit) }
+                hits[#hits + 1] = { Fit((h.ability or "?") .. " · " .. (h.source or "?")), N(h.hit) }
             end
             Pairs(self, string.format("%s  killed by %s", SBR.FormatDuration(d.t), d.killer or "?"), hits, true)
         end
@@ -187,14 +209,16 @@ function ZO_Tooltip:LayoutScoreboardRemasteredRecord(r)
     end
     Pairs(self, nil, teams)
     Pairs(self, nil, {
-        { "Kills / Deaths / Assists", string.format("%s / %s / %s", tostring(r.kills or "-"), tostring(r.deaths or "-"), tostring(r.assists or "-")) },
+        { "K / D / A", string.format("%s / %s / %s", tostring(r.kills or "-"), tostring(r.deaths or "-"), tostring(r.assists or "-")) },
         { "Damage", N(r.damage) }, { "Healing", N(r.healing) }, { "Score", N(r.score) },
     })
     Pairs(self, nil, {
-        { "Rank", r.teamRank and string.format("#%d on your team, #%d of %d", r.teamRank, r.rank or 0, r.players or 0) or nil },
+        { "Team rank", r.teamRank and string.format("#%d", r.teamRank) or nil },
+        { "Overall rank", r.rank and string.format("#%d of %d", r.rank, r.players or 0) or nil },
         { "Match MVP", r.mvp and (r.mvp.isYou and "You" or r.mvp.name) or nil },
         { "DPS", r.dps and N(r.dps) or nil },
-        { "Max hit", r.maxHit and (N(r.maxHit) .. (r.maxHitAbility and ("  " .. r.maxHitAbility) or "")) or nil },
+        { "Max hit", r.maxHit and N(r.maxHit) or nil },
+        { "Max hit ability", r.maxHitAbility },
         { "Crit rate", r.critRate and Pct(r.critRate) or nil },
     }, true)
     Pairs(self, "Medals", MedalRows(r.medals), true)
@@ -214,7 +238,8 @@ function ZO_Tooltip:LayoutScoreboardRemasteredKnownPlayer(e)
         })
         Pairs(self, "You vs them", {
             { "They killed you", e.killedYou }, { "You killed them", e.killedByYou },
-            { "Damage to you / from you", (e.damageToYou + e.damageFromYou) > 0 and (N(e.damageToYou) .. " / " .. N(e.damageFromYou)) or nil },
+            { "Damage to you", e.damageToYou > 0 and N(e.damageToYou) or nil },
+            { "Damage to them", e.damageFromYou > 0 and N(e.damageFromYou) or nil },
             { "Healed you", e.healedYou > 0 and N(e.healedYou) or nil },
         }, true)
     end
@@ -228,7 +253,7 @@ function ZO_Tooltip:LayoutScoreboardRemasteredKnownPlayer(e)
         { "Best score", string.format("%s  %s", N(e.bestScore), e.bestScoreMap or "") },
     }, true)
     local classes = {}
-    for _, c in ipairs(sum.classes) do classes[#classes + 1] = { Icon(c.icon, 32) .. " " .. c.className, c.matches .. " match" .. (c.matches == 1 and "" or "es") } end
+    for _, c in ipairs(sum.classes) do classes[#classes + 1] = { Icon(c.icon, 32) .. " " .. Fit(c.className, 18), c.matches .. " match" .. (c.matches == 1 and "" or "es") } end
     Pairs(self, "Classes played", classes, true)
     Pairs(self, "Top abilities", AbilityRows(sum.abilities, 5), true)
     Pairs(self, "Last seen", { { e.lastMap or "?", SBR.FormatTimestamp(e.lastSeen) } }, true)
@@ -250,9 +275,9 @@ function ZO_Tooltip:LayoutScoreboardRemasteredLifetime(kind, value)
             { "Kills", a.bestKills and (a.bestKills.kills .. "  " .. a.bestKills.map) or nil },
         }, true)
         Pairs(self, "Totals", {
-            { "Kills / Deaths / Assists", string.format("%d / %d / %d", a.kills, a.deaths, a.assists) },
+            { "K / D / A", string.format("%d / %d / %d", a.kills, a.deaths, a.assists) },
             { "Damage", N(a.damage) }, { "Healing", N(a.healing) }, { "Medals", a.medals },
-            { "Time in battlegrounds", SBR.FormatDuration(a.seconds) },
+            { "Time played", SBR.FormatDuration(a.seconds) },
         }, true)
     else
         local list = {}

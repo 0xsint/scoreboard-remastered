@@ -256,6 +256,11 @@ Rendering the real layout at ESO's real font sizes found layout bugs that are no
 - The details pane and the records dialog ran into the gamepad button bar.
 - The stat tiles drew their text badge over the icon.
 - The gamepad button labels were too long for ESO's strip.
+- Console tooltip rows ran off the right edge of the screen. ESO sizes a tooltip line or
+  stat / value pair to its text unless its style gives it a width, and never wraps or
+  truncates it. Every row now uses ESO's `fullWidth` style, so long text wraps inside the
+  tooltip, and long labels are shortened. The renderer applies the same sizing rules and
+  warns about any row that ends past the tooltip's edge.
 - The first custom console panels didn't look like ESO's console UI. They were replaced
   with ESO's own gamepad list screen, header and tooltip.
 
